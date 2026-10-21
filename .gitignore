@@ -6,6 +6,9 @@ __pycache__/
 # Model weights (gated on Hugging Face: download them yourself)
 phonon-40m-en/
 
+# Speech-to-text model (download it yourself, see README)
+moonshine-base-en/
+
 # Generated audio and personal data
 *.wav
 instabox.txt

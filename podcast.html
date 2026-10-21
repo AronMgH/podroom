@@ -188,6 +188,9 @@
 
   .steer { display: flex; gap: 8px; padding: 0 18px; }
   .steer input { border-radius: 999px; padding-left: 16px; }
+  .steer #micBtn.rec { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); animation: recpulse 1.2s infinite; }
+  .steer #micBtn.busy { opacity: .6; cursor: progress; }
+  @keyframes recpulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 18%, transparent); } }
   .crow.me .role { color: var(--text); }
   .crow.me .avatar svg { width: 16px; height: 16px; }
   .foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px 18px 18px; }
@@ -345,8 +348,8 @@
         <div class="empty"><div class="orb"></div><b>Ready when you are</b>Pick a format or build your cast, set a topic and press Start. Each character is its own AI, and they decide among themselves who speaks next.</div>
       </div>
       <div class="steer">
-        <div class="seg" id="micMode" style="flex:none;width:172px"></div>
         <input type="text" id="noteInput" maxlength="400" disabled>
+        <button class="btn icon" id="micBtn" disabled></button>
         <button class="btn" id="noteBtn" disabled>Send</button>
       </div>
       <div class="foot">
@@ -393,13 +396,21 @@ function save() {
   renderNow();
 }
 const cast = () => state.characters.filter((c) => c.name.trim());
-// You, the producer. You join on air from the studio box and are never one of the AI characters.
-const PRODUCER_COLOR = "#ecece4";
+// You: a real person at the table who runs the show. You join in from the studio box, typed or spoken,
+// your lines are never voiced, and you are never one of the AI characters.
+const YOU_COLOR = "#ecece4";
 const ICON_MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
-const producer = () => (state.producer ||= { name: "Producer", voice: "", speed: 0, expr: 1 });
-const isProducer = (name) => name === producer().name;
+const you = () => {
+  if (state.producer) { // the old "producer" seat: keep a name the user chose, drop the voice
+    const old = state.producer.name;
+    if (!state.you?.name && old && old !== "Producer") state.you = { name: old };
+    delete state.producer;
+  }
+  return (state.you ||= { name: "" });
+};
+const isYou = (name) => !!name && name === you().name;
 const colorOf = (name) => {
-  if (isProducer(name)) return PRODUCER_COLOR;
+  if (isYou(name)) return YOU_COLOR;
   const i = state.characters.findIndex((c) => c.name === name);
   return COLORS[(i < 0 ? 0 : i) % COLORS.length];
 };
@@ -430,7 +441,7 @@ async function init() {
   catalog = voices.filter((v) => v.language === "en");
   ttsModels = models.filter((m) => m.languages.includes("en"));
   if (!ttsModels.some((m) => m.id === state.settings.ttsModel)) state.settings.ttsModel = ttsModels[0]?.id || "";
-  renderEpisode(); renderFormats(); renderCast(); renderSettings(); renderKey(); renderNow(); renderMic(); renderView();
+  renderEpisode(); renderFormats(); renderCast(); renderSettings(); renderKey(); renderNow(); renderBoxHint(); renderView();
   selectTab(store.get("tab", "episode"));
 }
 
@@ -577,15 +588,13 @@ function uniqueName(name) {
 
 function renderCast() {
   const box = $("cast"); box.innerHTML = "";
-  const me = producer();
+  const me = you();
   const meRow = document.createElement("div");
-  meRow.className = "crow me"; meRow.style.setProperty("--c", PRODUCER_COLOR);
-  meRow.innerHTML = `<span class="avatar" style="--c:${PRODUCER_COLOR}">${ICON_MIC}</span>
-    <div class="info"><div class="nm">${esc(me.name)}<span class="role">You · Producer</span></div>
-    <div class="sub">${esc(["Joins on air from the studio box", me.voice || "Default voice", me.speed ? speedLabel(me.speed) : ""].filter(Boolean).join(" · "))}</div></div>
-    <div class="acts"><button class="btn ghost icon preview" title="Hear your voice">${ICON_PLAY}</button></div>`;
-  meRow.onclick = (e) => { if (!e.target.closest("button")) openProducerEditor(); };
-  meRow.querySelector(".preview").onclick = (e) => previewVoice(me, e.currentTarget);
+  meRow.className = "crow me"; meRow.style.setProperty("--c", YOU_COLOR);
+  meRow.innerHTML = `<span class="avatar" style="--c:${YOU_COLOR}">${ICON_MIC}</span>
+    <div class="info"><div class="nm">${esc(me.name || "Add your name")}<span class="role">You · in charge</span></div>
+    <div class="sub">Type or talk from the studio box: they stop, listen and do what you ask</div></div>`;
+  meRow.onclick = openYouEditor;
   box.appendChild(meRow);
   state.characters.forEach((c, i) => {
     const color = COLORS[i % COLORS.length];
@@ -680,37 +689,26 @@ function openEditor(i) {
   ov.hidden = false;
   q(".name").focus();
 }
-function openProducerEditor() {
-  const me = producer();
+function openYouEditor() {
+  const me = you();
   const ov = $("editor");
   ov.innerHTML = `
-    <div class="dialog glass" role="dialog" aria-modal="true" aria-label="Your seat" style="--c:${PRODUCER_COLOR}">
+    <div class="dialog glass" role="dialog" aria-modal="true" aria-label="Your seat" style="--c:${YOU_COLOR}">
       <div class="dh">
-        <span class="avatar" style="--c:${PRODUCER_COLOR}">${ICON_MIC}</span>
-        <input type="text" class="name" maxlength="40" placeholder="Your name on the show" value="${esc(me.name)}">
+        <span class="avatar" style="--c:${YOU_COLOR}">${ICON_MIC}</span>
+        <input type="text" class="name" maxlength="40" placeholder="Your name" value="${esc(me.name)}">
       </div>
       <div class="db">
-        <span class="help">Switch the studio box to <b>On air</b> and type: your line is spoken in this voice as part of the episode, and the characters answer you. Your lines do not use AI calls or count towards the turns.</span>
-        <label class="f">Your voice
-          <div class="voice-row">
-            <select class="voice">${voiceOptions(me.voice)}</select>
-            <button class="btn icon preview" title="Hear this voice">${ICON_PLAY}</button>
-          </div>
-        </label>
-        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Speed</span><div class="seg speed"></div></div>
-        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Expressiveness</span><div class="seg expr"></div></div>
+        <span class="help">You are at the table and in charge. Type in the studio box or click the mic and talk: whoever is speaking stops, and the characters answer you by name and do what you ask. Your lines are not voiced and do not use AI calls.</span>
       </div>
       <div class="df"><span class="sp"></span><button class="btn primary done">Done</button></div>
     </div>`;
   const q = (s) => ov.querySelector(s);
   q(".name").oninput = (e) => {
     const v = e.target.value.trim();
-    if (v && !state.characters.some((c) => c.name.toLowerCase() === v.toLowerCase())) { me.name = v; save(); renderCast(); }
+    if (!state.characters.some((c) => c.name.toLowerCase() === v.toLowerCase())) { me.name = v; save(); renderCast(); renderBoxHint(); }
   };
-  q(".voice").onchange = (e) => { me.voice = e.target.value; save(); renderCast(); };
-  seg(q(".speed"), SPEEDS, me.speed, (v) => { me.speed = v; save(); renderCast(); });
-  seg(q(".expr"), EXPRS, me.expr, (v) => { me.expr = v; save(); });
-  q(".preview").onclick = (e) => previewVoice(me, e.currentTarget);
+  q(".name").onkeydown = (e) => { if (e.key === "Enter") closeEditor(); };
   q(".done").onclick = closeEditor;
   ov.onclick = (e) => { if (e.target === ov) closeEditor(); };
   ov.hidden = false;
@@ -779,10 +777,9 @@ function openInvite() {
     if (replace && !confirm("Replace the whole cast with the characters the AI invites?")) return;
     busy = true; q(".go").disabled = true; q(".go").innerHTML = '<span class="spinner light"></span>Casting…'; note("");
     try {
-      const mine = producer().voice;
       const res = await post("/api/podcast/invite", {
-        characters: cast(), show: state.show, topic: state.topic, producer: producer().name, hint: q(".hint").value, slots: slots.map((x) => x.trim()), replace,
-        voices: catalog.filter((v) => v.name !== mine).map(({ name, gender, age, locale }) => ({ name, gender, age, locale })),
+        characters: cast(), show: state.show, topic: state.topic, user: you().name, hint: q(".hint").value, slots: slots.map((x) => x.trim()), replace,
+        voices: catalog.map(({ name, gender, age, locale }) => ({ name, gender, age, locale })),
         myTemplates: state.myTemplates, provider: state.settings.provider, llmModel: state.settings.llmModel, session: sampleSession,
       });
       const data = await res.json();
@@ -911,7 +908,7 @@ async function sampleLine(c, btn, out) {
 
 // ===== the show =====================================================================================
 const sampleSession = crypto.randomUUID();
-const show = { session: null, running: false, paused: false, epoch: 0, turns: [], nextTime: 0, note: null, thinkingEl: null, usage: { in: 0, out: 0 },
+const show = { session: null, running: false, paused: false, epoch: 0, turns: [], nextTime: 0, thinkingEl: null, usage: { in: 0, out: 0 },
   calls: [], lastCut: -99, ttsBusy: false, clips: {}, wps: {}, floor: null, floorEnd: -99 };
 // Calls-per-minute budget: at most rpm AI calls in any 60 seconds.
 function canCall() {
@@ -933,6 +930,8 @@ function setControls() {
   $("pauseBtn").disabled = !r;
   $("stopBtn").disabled = !r;
   $("noteInput").disabled = $("noteBtn").disabled = !r;
+  $("micBtn").disabled = !r || !sttReady || mic.busy;
+  $("micBtn").title = !sttReady ? "Speech to text is not installed (see the README)" : mic.on ? "Send it now" : "Talk instead of typing (the characters stop and listen)";
   const has = show.turns.some((t) => t.pcm.length);
   $("dlWav").disabled = $("dlTxt").disabled = r || !has;
   $("live").className = "live" + (r ? (show.paused ? " paused" : " on") : "");
@@ -946,7 +945,8 @@ function validate() {
   if (names.length < 2) return "Add at least two characters with names.";
   if (new Set(names).size !== names.length) return "Every character needs a different name.";
   if (!state.topic.trim()) return "Give them a topic first.";
-  if (names.includes(producer().name.trim().toLowerCase())) return "Your producer name matches a character's. Change one of them.";
+  if (!you().name.trim()) return "Add your name first (the top seat in the Cast tab), so the characters can talk to you.";
+  if (names.includes(you().name.trim().toLowerCase())) return "Your name matches a character's. Change one of them.";
   return null;
 }
 
@@ -956,7 +956,7 @@ async function start() {
   for (const c of state.characters) c.name = c.name.trim();
   previewing?.abort();
   // Clear the last episode before any await, so a second click cannot start a second show.
-  show.turns = []; show.nextTime = 0; show.note = null; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99;
+  show.turns = []; show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99;
   $("transcript").innerHTML = ""; $("turnNo").textContent = "0"; $("clock").textContent = "0:00"; show.signedOff = false;
   show.running = true; show.epoch++;
   show.session = crypto.randomUUID(); // one conversation ID per episode, for providers that route by session
@@ -1060,9 +1060,9 @@ function pickNext(phase, mode = state.settings.turnMode) {
 }
 
 // The floor: a character can hold the stage for a stretch, spoken as back-to-back parts of up to about
-// a minute each. The producer can hand anyone the stage (up to FLOOR_MAX seconds); otherwise the AI
-// director may, within each character's own limit. It ends when the time is used, the host starts the
-// closing, or the producer speaks.
+// a minute each. You can hand anyone the stage (up to FLOOR_MAX seconds); otherwise the AI director
+// may, within each character's own limit. It ends when the time is used, the host starts the closing,
+// or you speak.
 const FLOOR_MAX = 360;
 const wpsOf = (name) => show.wps[name] || 2.4;
 const plannedSecs = () => { const first = show.turns.find((t) => t.start !== null); return first ? show.nextTime - first.start : 0; };
@@ -1099,8 +1099,8 @@ function floorPlan() {
 // Smart turn-taking: obvious cases are decided here, everything else by an AI director that reads the
 // whole conversation and says who would naturally speak next and what they want to say. If the director
 // is slow, over budget or confused, the simple rule decides instead, so it never holds up the show.
-// The producer's word always wins: a stage handed out in the studio box is granted right here, and any
-// other order from them goes to the director.
+// Your word always wins: a stage handed out from the studio box is granted right here, and anything
+// else you ask goes to the director.
 async function chooseNext(phase, ep) {
   const people = cast();
   const host = people.find((c) => c.role === "host") || people[0];
@@ -1111,16 +1111,16 @@ async function chooseNext(phase, ep) {
     if (c && show.floor.secs - show.floor.used >= 12) return { speaker: c, floor: floorPlan() };
     show.floor = null;
   }
-  if (phase === "normal" && last && (show.note || last.human)) {
-    const f = parseFloor(show.note || last.text, people);
-    if (f && grantFloor(f.who, f.secs, "producer")) return { speaker: f.who, floor: floorPlan() };
+  if (phase === "normal" && last?.human) {
+    const f = parseFloor(last.text, people);
+    if (f && grantFloor(f.who, f.secs, "you")) return { speaker: f.who, floor: floorPlan() };
   }
   if (state.settings.turnMode !== "smart") return { speaker: pickNext(phase) };
   if (aiCount() === 0 || phase === "close") return { speaker: host };
   const others = people.filter((c) => c.name !== last.name);
   if (others.length === 1) return { speaker: others[0] };
   const named = (text) => others.filter((c) => mentions(text, [c]));
-  const bossed = !!show.note || last.human; // the producer has said something to act on
+  const bossed = last.human; // you have said something to act on
   if (!bossed && /\?/.test(last.text)) { // asked someone by name near the end of the line
     const asked = pickNext(phase, "natural");
     if (mentions(last.text.slice(Math.floor(last.text.length * 0.45)), [asked])) return { speaker: asked };
@@ -1129,7 +1129,7 @@ async function chooseNext(phase, ep) {
     show.calls.push(performance.now());
     try {
       const res = await post("/api/podcast/next", {
-        characters: people, show: state.show, topic: state.topic, producer: producer().name, note: show.note,
+        characters: people, show: state.show, topic: state.topic, user: you().name,
         transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })),
         provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session,
       }, AbortSignal.timeout(5000));
@@ -1138,15 +1138,14 @@ async function chooseNext(phase, ep) {
       if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
       if (speaker) {
         let floor = null;
-        // A long turn: whenever the producer is involved, or when this person is allowed one and the last was a while ago.
+        // A long turn: whenever you asked for one, or when this person is allowed one and the last was a while ago.
         const allowed = bossed || (speaker.longest > 0 && show.turns.length - show.floorEnd >= 8);
-        if (d.floor >= 30 && allowed && grantFloor(speaker, bossed ? d.floor : Math.min(d.floor, speaker.longest), bossed ? "producer" : "director")) floor = floorPlan();
+        if (d.floor >= 30 && allowed && grantFloor(speaker, bossed ? d.floor : Math.min(d.floor, speaker.longest), bossed ? "you" : "director")) floor = floorPlan();
         return { speaker, intent: d.intent, wantsCut: d.cutIn && !floor, floor };
       }
     } catch {}
     if (!alive(ep)) return { speaker: host };
   }
-  if (show.note && named(show.note).length === 1) return { speaker: named(show.note)[0] }; // your note names someone
   if (last.human && named(last.text).length === 1) return { speaker: named(last.text)[0] };
   return { speaker: pickNext(phase, "natural") };
 }
@@ -1170,13 +1169,12 @@ async function loop(ep) {
       const phase = episodePhase();
       const { speaker, intent, wantsCut, floor } = await chooseNext(phase, ep);
       if (!alive(ep)) return;
-      const note = show.note; show.note = null;
       const cut = phase === "normal" && !floor ? planInterruption(prev, speaker, wantsCut) : null;
       showThinking(speaker);
       const data = await askAI({
-        characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase, note,
+        characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase,
         transcript: show.turns.map((t) => ({ name: t.name, text: t === prev && cut ? cut.text : t.llmText ?? t.text })),
-        cutIn: cut ? prev.name : null, producer: producer().name, intent, floor: floor || undefined,
+        cutIn: cut ? prev.name : null, user: you().name, intent, floor: floor || undefined,
         length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
       }, ep);
       if (!alive(ep)) return;
@@ -1190,11 +1188,12 @@ async function loop(ep) {
         start: null, end: null, done: false, abort: new AbortController(), el: null, cutsPrev: cut, phase, floor: floor?.mode };
       hideThinking();
       show.turns.push(turn);
-      turn.entry = logEntry({ type: "line", name: speaker.name, role: speaker.role, phase, text: data.text, cutIn: cut ? prev.name : undefined, note: note || undefined, intent: intent || undefined, floor: floor?.mode });
+      turn.entry = logEntry({ type: "line", name: speaker.name, role: speaker.role, phase, text: data.text, cutIn: cut ? prev.name : undefined, intent: intent || undefined, floor: floor?.mode, toYou: data.toYou || undefined });
       renderTurn(turn);
       await waitUntil(() => !alive(ep) || !prev || prev.done); // never overlap two lines' audio
       if (!alive(ep)) return;
       await speakTurn(turn);
+      if (data.toYou && phase !== "close") return yourTurn(turn, ep);
       if (phase === "close") show.signedOff = true;
     }
     if (!alive(ep)) return;
@@ -1277,7 +1276,7 @@ async function speakTurn(turn) {
   turn.gain = ctx.createGain(); turn.gain.connect(analyser);
   show.ttsBusy = true;
   try {
-    // Only this turn's own abort cancels it: a producer note restarts the loop but must not cut off the line being heard.
+    // Only this turn's own abort cancels it: restarting the loop must not cut off the line being heard.
     await streamSpeech(turn.text, turn.who, turn.abort.signal, (pcm, rate) => {
       if (turn.abort.signal.aborted) return;
       if (turn.start === null) {
@@ -1320,20 +1319,8 @@ function dropQueued() {
   hideThinking();
 }
 
-function steer(text) {
-  show.floor = null; // a new order from the producer replaces any stage they gave earlier
-  dropQueued();
-  const note = document.createElement("div");
-  note.className = "note"; note.textContent = `Producer note: ${text}`;
-  $("transcript").appendChild(note); scrollDown();
-  show.note = text;
-  logEntry({ type: "note", name: producer().name, text });
-  show.epoch++;
-  loop(show.epoch);
-}
-
-// You speak over whoever is talking: their line fades out at once and you take the mic. This is what makes
-// the producer the boss, and it matters most when someone has the floor for a minute or more.
+// You speak over whoever is talking: their line fades out at once and you take the floor. This is what makes
+// you the boss, and it matters most when someone has the floor for a minute or more.
 function cutPlaying() {
   const now = ctx.currentTime, cutAt = now + 0.3;
   const t = show.turns.find((x) => !x.human && !x.cutAt && x.start !== null && x.start <= now && (now < x.end || !x.done));
@@ -1352,45 +1339,173 @@ function cutPlaying() {
   });
   if (!t.done) { t.abort.abort(); t.done = true; } // stop generating the rest of the line
   t.cutAt = cutAt; t.cutText = words.slice(0, k).join(" ").replace(/[,.;:!?]+$/, "") + "—"; t.llmText = t.cutText; t.end = cutAt + 0.15;
-  if (t.entry) { t.entry.cut = t.cutText; t.entry.byProducer = true; saveRecord(); }
+  if (t.entry) { t.entry.cut = t.cutText; t.entry.byYou = true; saveRecord(); }
   show.nextTime = cutAt - 0.05;
 }
 
-// You speak on air: your line is voiced like any other and the characters answer it.
-function sayOnAir(text) {
-  show.floor = null;
+// You say something: it goes straight into the conversation (never voiced) and the characters answer it.
+function youSay(text) {
+  show.floor = null; // anything you say replaces a stage you gave earlier
   cutPlaying();
   dropQueued();
-  const prev = show.turns[show.turns.length - 1];
-  const me = producer();
-  const turn = { name: me.name, who: { ...me }, text, human: true, pcm: [], sources: [], reactions: [], gain: null,
-    start: null, end: null, done: false, abort: new AbortController(), el: null, cutsPrev: null };
+  const now = ctx.currentTime;
+  const turn = { name: you().name, who: { ...you() }, text, human: true, pcm: [], sources: [], reactions: [], gain: null,
+    start: now, end: now, done: true, abort: new AbortController(), el: null, cutsPrev: null };
   show.turns.push(turn);
-  turn.entry = logEntry({ type: "onair", name: me.name, role: "producer", text });
+  turn.entry = logEntry({ type: "you", name: turn.name, text });
   renderTurn(turn);
   show.epoch++;
-  const ep = show.epoch;
-  (async () => {
-    try {
-      await waitUntil(() => !show.running || !prev || prev.done);
-      if (show.running && !turn.abort.signal.aborted) await speakTurn(turn);
-    } catch (e) { if (e.name !== "AbortError") setStatus(e.message, true); }
-  })();
-  loop(ep);
+  loop(show.epoch);
 }
 
-let micMode = store.get("mic", "air");
-function renderMic() {
-  seg($("micMode"), [["air", "On air"], ["note", "Note"]], micMode, (v) => { micMode = v; store.set("mic", v); renderMic(); });
-  $("noteInput").placeholder = micMode === "air"
-    ? `Say something on air as ${producer().name}…`
-    : "Producer note: steer the next line, e.g. “Theo, tell a story from your own work”";
+function renderBoxHint() {
+  $("noteInput").placeholder = `Talk to them${you().name ? ` as ${you().name}` : ""}: type here or click the mic…`;
 }
 function submitBox() {
   const text = $("noteInput").value.trim();
   if (!text || !show.running) return;
   $("noteInput").value = "";
-  micMode === "air" ? sayOnAir(text) : steer(text);
+  youSay(text);
+}
+
+// ===== the mic ============================================================================================
+// Talk instead of typing: click the mic and speak. Whoever is talking is cut off and nobody else speaks: the
+// characters wait for you. What you say appears in the box as you speak (transcribed on this machine by
+// /api/stt), and when you stop talking for a moment it goes into the conversation. Clicking the mic again
+// sends it at once.
+let sttReady = false;
+const STT_RATE = 16000;
+const STT_MAX_SECONDS = 30;
+const SILENCE_END = 2.5; // seconds of quiet after speech that mean you are done (short pauses are fine)
+const NO_SPEECH_GIVEUP = 8; // seconds to wait for you to start
+const YOUR_TURN_WAIT = 15; // the same, when a character has just handed you the floor
+const PARTIAL_EVERY = 500; // ms between live transcripts
+const mic = { on: false, busy: false, id: 0 };
+// Passes the raw microphone samples to the page, 128 at a time.
+const MIC_TAP = URL.createObjectURL(new Blob([`registerProcessor("mic-tap", class extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+});`], { type: "text/javascript" }));
+
+// Nothing was said (or it failed): the characters pick up where they left off.
+function carryOn() {
+  if (!show.running) return;
+  show.epoch++;
+  loop(show.epoch);
+}
+
+// A character handed you the floor: nobody else speaks until you answer. The mic opens by itself when their
+// line ends (or type in the box); if you stay quiet, the show moves on without you.
+async function yourTurn(turn, ep) {
+  setStatus(`${turn.name} is waiting for you…`);
+  await waitUntil(() => !alive(ep) || (turn.done && ctx.currentTime >= turn.end));
+  if (!alive(ep)) return;
+  if (sttReady && !mic.on && !mic.busy) return startMic(YOUR_TURN_WAIT, `Your turn: ${turn.name} is listening…`);
+  setStatus(`Your turn: ${turn.name} is waiting for you. Type in the box.`);
+  await sleep(YOUR_TURN_WAIT * 1000);
+  if (alive(ep)) { setStatus(""); carryOn(); }
+}
+
+function toggleMic() {
+  return mic.on ? finishMic() : startMic();
+}
+
+async function startMic(giveUp = NO_SPEECH_GIVEUP, listening = "Listening…") {
+  if (mic.on || !show.running || mic.busy) return;
+  let media;
+  try {
+    media = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    return setStatus(`No microphone: ${e.message}`, true);
+  }
+  if (!show.running) return media.getTracks().forEach((t) => t.stop());
+  // Take the floor: cut off the line being heard, drop what is queued, and stop the loop until you are done.
+  show.floor = null;
+  cutPlaying();
+  dropQueued();
+  show.epoch++;
+  // A 16 kHz context resamples the mic to what the model expects.
+  const ac = new AudioContext({ sampleRate: STT_RATE });
+  await ac.audioWorklet.addModule(MIC_TAP);
+  const node = new AudioWorkletNode(ac, "mic-tap");
+  ac.createMediaStreamSource(media).connect(node);
+  node.connect(ac.destination); // it outputs silence; this just keeps it running
+  const m = Object.assign(mic, {
+    on: true, id: mic.id + 1, media, ac, chunks: [], samples: 0, prefix: $("noteInput").value.trim(),
+    floor: 0.002, run: 0, heard: false, lastVoice: 0, partialBusy: false, partialAt: 0, giveUp,
+  });
+  node.port.onmessage = (e) => hear(m, e.data);
+  m.timer = setInterval(() => livePartial(m), PARTIAL_EVERY);
+  $("micBtn").classList.add("rec");
+  setStatus(listening);
+  setControls();
+}
+
+// Simple voice detection on each 128-sample frame: loud enough above the room's own noise level counts as
+// speech, and a run of quiet after speech means you are done.
+function hear(m, frame) {
+  if (!m.on || m.id !== mic.id) return;
+  m.chunks.push(frame); m.samples += frame.length;
+  let sum = 0; for (const x of frame) sum += x * x;
+  const rms = Math.sqrt(sum / frame.length);
+  // The room's noise level starts low (you may start talking at once) and follows the quiet moments.
+  const voiced = rms > Math.max(0.012, m.floor * 3);
+  if (!voiced) m.floor = Math.min(0.05, m.floor * 0.98 + rms * 0.02);
+  m.run = voiced ? m.run + 1 : 0;
+  if (m.run >= 8) m.heard = true; // about 60 ms of sound, so a click does not count
+  if (voiced) m.lastVoice = m.samples;
+  const secs = m.samples / STT_RATE;
+  if (m.heard && (m.samples - m.lastVoice) / STT_RATE > SILENCE_END) finishMic();
+  else if (!m.heard && secs > m.giveUp) finishMic();
+  else if (secs >= STT_MAX_SECONDS) finishMic();
+}
+
+function micAudio(m) {
+  const pcm = new Float32Array(m.samples);
+  let at = 0; for (const c of m.chunks) { pcm.set(c, at); at += c.length; }
+  return pcm;
+}
+
+async function sttRequest(pcm) {
+  const res = await fetch("/api/stt", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: pcm });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "transcription failed");
+  return data.text;
+}
+
+// What you have said so far, shown in the box while you speak.
+async function livePartial(m) {
+  if (!m.on || !m.heard || m.partialBusy || m.samples - m.partialAt < STT_RATE * 0.3) return;
+  m.partialBusy = true; m.partialAt = m.samples;
+  try {
+    const text = await sttRequest(micAudio(m));
+    if (m.on && m.id === mic.id && text) $("noteInput").value = [m.prefix, text].filter(Boolean).join(" ");
+  } catch {} finally { m.partialBusy = false; }
+}
+
+async function finishMic() {
+  const m = mic;
+  if (!m.on) return;
+  m.on = false;
+  clearInterval(m.timer);
+  m.media.getTracks().forEach((t) => t.stop());
+  m.ac.close();
+  $("micBtn").classList.remove("rec");
+  if (!show.running) return;
+  m.busy = true; $("micBtn").classList.add("busy"); setControls();
+  try {
+    const text = m.heard ? await sttRequest(micAudio(m)) : "";
+    if (!show.running) return;
+    const said = [m.prefix, text].filter(Boolean).join(" ");
+    $("noteInput").value = "";
+    if (!said) { setStatus("Did not catch that. Try again, or type it."); return carryOn(); }
+    setStatus("");
+    youSay(said);
+  } catch (e) {
+    setStatus(`Speech to text: ${e.message}`, true);
+    carryOn();
+  } finally {
+    m.busy = false; $("micBtn").classList.remove("busy"); setControls();
+  }
 }
 
 function togglePause() {
@@ -1409,12 +1524,13 @@ function stopShow() {
     // Keep only what was actually heard.
     if (t.start === null || t.start > ctx.currentTime) { t.pcm = []; t.el?.remove(); if (t.entry) t.entry.dropped = true; }
   }
-  show.turns = show.turns.filter((t) => t.pcm.length);
+  show.turns = show.turns.filter((t) => t.pcm.length || t.human);
   endShow("Stopped.");
 }
 
 function endShow(msg, err) {
   show.running = false; show.epoch++;
+  finishMic();
   if (show.paused) { show.paused = false; ctx?.resume(); }
   hideThinking();
   for (const t of show.turns) t.el?.classList.remove("speaking", "queued");
@@ -1441,7 +1557,7 @@ function newRecord() {
   show.record = {
     id: `${started.replace(/[ :]/g, (c) => (c === " " ? "_" : "-"))}_${slug}`, show: state.show, topic: state.topic, startedAt: started,
     cast: cast().map(({ name, role, voice, attitude, persona, style, speed, expr, length }) => ({ name, role, voice, attitude, persona, style, speed, expr, length })),
-    producer: producer().name,
+    you: you().name,
     settings: { minutes: s.minutes, turnMode: s.turnMode, length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel,
       interrupts: s.interrupts, reactions: s.reactions, ttsModel: s.ttsModel },
     lines: [],
@@ -1471,6 +1587,9 @@ $("startBtn").onclick = start;
 $("pauseBtn").onclick = togglePause;
 $("stopBtn").onclick = stopShow;
 $("noteBtn").onclick = submitBox;
+$("micBtn").innerHTML = ICON_MIC;
+$("micBtn").onclick = toggleMic;
+fetch("/api/stt").then((r) => r.json()).then((d) => { sttReady = !!d.ready; setControls(); }).catch(() => {});
 $("noteInput").addEventListener("keydown", (e) => { if (e.key === "Enter") submitBox(); });
 
 // ===== transcript ======================================================================================
@@ -1482,7 +1601,7 @@ function bubble(name, html, cls) {
   el.className = "turn " + (cls || "");
   el.style.setProperty("--c", colorOf(name));
   el.innerHTML = `${face(name, colorOf(name))}
-    <div class="bubble"><div class="who">${esc(name)}<span class="tagx">${c ? cap(c.role) + " · " + esc(attitudeLabel(c.attitude)) : isProducer(name) ? "Producer · You" : ""}</span></div><div class="txt">${html}</div><div class="prog"></div></div>`;
+    <div class="bubble"><div class="who">${esc(name)}<span class="tagx">${c ? cap(c.role) + " · " + esc(attitudeLabel(c.attitude)) : isYou(name) ? "You" : ""}</span></div><div class="txt">${html}</div><div class="prog"></div></div>`;
   return el;
 }
 function showThinking(speaker) {
@@ -1511,7 +1630,7 @@ function renderView() {
 
 function renderSeats() {
   const people = [...cast().map((c) => ({ name: c.name, color: colorOf(c.name), html: esc(c.name[0].toUpperCase()) })),
-    { name: producer().name, color: PRODUCER_COLOR, html: ICON_MIC }];
+    { name: you().name, color: YOU_COLOR, html: ICON_MIC }];
   $("seats").innerHTML = people.map((p) => `<span class="avatar" data-name="${esc(p.name)}" style="--c:${p.color}" title="${esc(p.name)}">${p.html}</span>`).join("");
 }
 
@@ -1530,7 +1649,7 @@ function updateStage(now) {
     color = colorOf(speaking.name);
     if (key !== stageState.key) {
       const c = cast().find((x) => x.name === speaking.name);
-      $("capWho").innerHTML = `${esc(speaking.name)}${c ? ` · ${cap(c.role)}` : speaking.human ? " · Producer" : ""}`;
+      $("capWho").innerHTML = `${esc(speaking.name)}${c ? ` · ${cap(c.role)}` : speaking.human ? " · You" : ""}`;
       $("capWho").style.setProperty("--c", color);
       $("capLine").className = "cap-line";
       // Split the line into subtitle-sized chunks of about 55 characters.
@@ -1723,7 +1842,7 @@ $("dlWav").onclick = () => {
   download(new Blob([buf], { type: "audio/wav" }), episodeName("wav"));
 };
 $("dlTxt").onclick = () => {
-  const lines = [`${state.show}`, `Topic: ${state.topic}`, "", ...show.turns.filter((t) => t.pcm.length).map((t) => `${t.name}: ${t.cutText ?? t.text}\n`)];
+  const lines = [`${state.show}`, `Topic: ${state.topic}`, "", ...show.turns.filter((t) => t.pcm.length || t.human).map((t) => `${t.name}: ${t.cutText ?? t.text}\n`)];
   download(new Blob([lines.join("\n")], { type: "text/plain" }), episodeName("txt"));
 };
 

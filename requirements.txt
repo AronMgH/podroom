@@ -1,1 +1,2 @@
 ptts==0.4.0
+sherpa-onnx==1.13.8

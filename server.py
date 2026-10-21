@@ -16,6 +16,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import numpy
 import ptts
 
 import podcast
@@ -52,6 +53,14 @@ EXPR_TEMP = {0: 0.15, 1: 0.3, 2: 0.45, 3: 0.6}
 lock = threading.Lock()  # the runtime wants one call at a time
 _loaded = {}  # (model id, lang) -> ptts.TTS
 _voices = None
+
+# Speech to text for the producer's mic: Moonshine (English, MIT) run by sherpa-onnx, fully offline.
+# The browser sends 16 kHz mono float32 PCM; clips are push-to-talk, so 30 s is plenty.
+STT_DIR = os.path.join(HERE, "moonshine-base-en")
+STT_RATE = 16000
+STT_MAX_SECONDS = 30
+stt_lock = threading.Lock()  # separate from the TTS lock, so the mic never waits for a line being spoken
+_stt = None
 
 
 def list_models():
@@ -117,6 +126,44 @@ def get_tts(model_id, lang):
     if key not in _loaded:
         _loaded[key] = ptts.TTS(model["source"], lang=lang, quant=model["quant"])
     return _loaded[key]
+
+
+def stt_files():
+    """The Moonshine files in STT_DIR, preferring the int8 builds, or None when the model is not there."""
+    def pick(stem):
+        found = sorted(glob.glob(os.path.join(STT_DIR, stem + "*.onnx")), key=lambda p: "int8" not in p)
+        return found[0] if found else None
+    files = {
+        "preprocessor": pick("preprocess"),
+        "encoder": pick("encode"),
+        "uncached_decoder": pick("uncached_decode"),
+        "cached_decoder": pick("cached_decode"),
+        "tokens": os.path.join(STT_DIR, "tokens.txt"),
+    }
+    if not all(files.values()) or not os.path.isfile(files["tokens"]):
+        return None
+    return files
+
+
+def get_stt():
+    global _stt
+    if _stt is None:
+        import sherpa_onnx  # only needed once someone uses the mic
+
+        files = stt_files()
+        if files is None:
+            raise FileNotFoundError("Speech-to-text model not found: see README, 'Speech to text'.")
+        _stt = sherpa_onnx.OfflineRecognizer.from_moonshine(**files, num_threads=4)
+    return _stt
+
+
+def transcribe(pcm):
+    with stt_lock:
+        recognizer = get_stt()
+        stream = recognizer.create_stream()
+        stream.accept_waveform(STT_RATE, pcm)
+        recognizer.decode_stream(stream)
+        return stream.result.text.strip()
 
 
 def catalog():
@@ -195,6 +242,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_body(200, f.read(), "text/css; charset=utf-8")
         elif self.path == "/api/podcast/state":
             self.send_json(200, {"state": podcast.load_state(), "status": podcast.status()})
+        elif self.path == "/api/stt":
+            self.send_json(200, {"ready": stt_files() is not None})
         else:
             self.send_json(404, {"error": "not found"})
 
@@ -248,6 +297,8 @@ class Handler(BaseHTTPRequestHandler):
             self.turn()
         elif self.path == "/api/podcast/sample":
             self.turn(sample=True)
+        elif self.path == "/api/stt":
+            self.stt()
         else:
             self.send_json(404, {"error": "not found"})
 
@@ -294,6 +345,25 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(429, {"error": str(e), "retryAfter": e.retry_after})
         except Exception as e:
             self.send_json(502, {"error": str(e)})
+
+    def stt(self):
+        """Transcribe a push-to-talk clip: raw little-endian float32 mono PCM at 16 kHz."""
+        length = int(self.headers.get("Content-Length", 0))
+        if length > STT_MAX_SECONDS * STT_RATE * 4:
+            return self.send_json(413, {"error": f"Keep it under {STT_MAX_SECONDS} seconds."})
+        body = self.rfile.read(length)
+        if len(body) < (STT_RATE // 4) * 4:  # under a quarter of a second of float32: nothing was said
+            return self.send_json(200, {"text": ""})
+        pcm = numpy.frombuffer(body[: len(body) // 4 * 4], dtype="<f4")
+        t0 = time.perf_counter()
+        try:
+            text = transcribe(pcm)
+        except FileNotFoundError as e:
+            return self.send_json(503, {"error": str(e)})
+        except Exception as e:
+            print(f"stt: {e}", file=sys.stderr, flush=True)
+            return self.send_json(500, {"error": str(e)})
+        self.send_json(200, {"text": text, "seconds": round(time.perf_counter() - t0, 2)})
 
     def stream(self):
         text, model, lang, kwargs, speed = self.read_request()
