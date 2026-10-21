@@ -952,14 +952,15 @@ async function start() {
 }
 
 // ===== reactions ========================================================================================
-// Short "mm-hm" and "yeah" clips in each character's own voice, made once per show in the gaps
+// Short "yeah" and "right" clips in each character's own voice, made once per show in the gaps
 // between lines, then dropped in quietly while someone else is talking. They never call the AI.
-const REACT_LINES = ["Yeah.", "Right.", "Exactly.", "Oh, totally.", "True."];
+// Real words only: the voice cannot say sounds such as "Mm-hm" and reads them out letter by letter.
+const REACT_LINES = ["Yeah.", "Right.", "Exactly.", "Oh, totally.", "True.", "Sure.", "Okay.", "Fair.", "Wow."];
 async function buildReactions(ep) {
   for (const c of cast()) {
     if (show.clips[c.name]) continue;
-    const pick = (a) => a[Math.floor(Math.random() * a.length)];
-    const lines = [pick(REACT_LINES), "Mm-hm."];
+    const pool = [...REACT_LINES].sort(() => Math.random() - 0.5);
+    const lines = pool.slice(0, 3);
     const clips = [];
     for (const text of lines) {
       await waitUntil(() => !alive(ep) || !show.ttsBusy); // lines being spoken come first
