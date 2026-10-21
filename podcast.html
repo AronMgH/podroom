@@ -62,6 +62,10 @@
   .crow .sub { font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .crow .acts { display: flex; gap: 2px; opacity: .55; transition: opacity .15s; }
   .crow:hover .acts { opacity: 1; }
+  .btn.invite { width: 100%; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .btn.invite svg { width: 15px; height: 15px; }
+  .invite-note { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+  .invite-note.err { color: #ff8a80; }
   .add-row { position: relative; }
   .add-row > .btn { width: 100%; border-style: dashed; background: transparent; color: var(--muted); }
   .add-row > .btn:hover { color: var(--text); }
@@ -257,7 +261,10 @@
           </button>
           <div class="menu glass" id="addMenu" hidden></div>
         </div>
-        <span class="help">Click a character to edit their voice, attitude, speed and personality.</span>
+        <button class="btn invite" id="inviteBtn" title="The AI casts whole characters for this topic">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9L12 2.5Zm6.5 12l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9.9-2.6Z"/></svg>Invite guests with AI
+        </button>
+        <span class="help">Click a character to edit their voice, attitude, speed and personality. Not finding the right guest? Let the AI cast them for your topic.</span>
       </div>
 
       <div class="pane" data-pane="settings" hidden>
@@ -396,7 +403,8 @@ const colorOf = (name) => {
 function normalize(c) {
   return { id: c.id || "c" + Math.random().toString(36).slice(2, 9), name: c.name || "", role: c.role || "guest", voice: c.voice || "",
     attitude: c.attitude || "balanced", persona: c.persona || "", style: c.style || "",
-    speed: Number.isInteger(c.speed) ? c.speed : 0, expr: Number.isInteger(c.expr) ? c.expr : 1, length: c.length || "" };
+    speed: Number.isInteger(c.speed) ? c.speed : 0, expr: Number.isInteger(c.expr) ? c.expr : 1, length: c.length || "",
+    longest: [60, 120, 180].includes(c.longest) ? c.longest : 0 };
 }
 const attitudeLabel = (id) => status.attitudes.find((a) => a.id === id)?.label || "Balanced";
 const speedLabel = (v) => SPEEDS.find((s) => s[0] === v)?.[1] || "Normal";
@@ -410,6 +418,10 @@ async function init() {
   ]);
   state = st.state; status = st.status;
   if ((state.settings.routing ?? 0) < 2) { state.settings.turnMode = "smart"; state.settings.routing = 2; save(); } // smart turn-taking is the new default
+  if (!state.settings.casting) { // long turns are new: give saved characters their template's setting once
+    for (const c of state.characters) if (c.longest === undefined) c.longest = status.characterTemplates.find((t) => t.name === c.name)?.longest || 0;
+    state.settings.casting = 1; save();
+  }
   state.characters = state.characters.map(normalize);
   state.myTemplates = (state.myTemplates || []).map(normalize);
   catalog = voices.filter((v) => v.language === "en");
@@ -550,6 +562,8 @@ function voiceOptions(selected) {
   return html;
 }
 const attitudeOptions = (sel) => status.attitudes.map((a) => `<option value="${a.id}"${a.id === sel ? " selected" : ""}>${esc(a.label)}</option>`).join("");
+const LONGEST = [[0, "Short turns only"], [60, "Up to 1 minute"], [120, "Up to 2 minutes"], [180, "Up to 3 minutes"]];
+const longestOptions = (sel) => LONGEST.map(([v, l]) => `<option value="${v}"${v === sel ? " selected" : ""}>${l}</option>`).join("");
 const lengthOptions = (sel) => [["", "Episode default"], ...LENGTHS].map(([v, l]) => `<option value="${v}"${v === sel ? " selected" : ""}>${l}</option>`).join("");
 
 function uniqueName(name) {
@@ -616,6 +630,9 @@ function openEditor(i) {
           <label class="f">Attitude<select class="attitude">${attitudeOptions(c.attitude)}</select></label>
           <label class="f">Talkativeness<select class="length">${lengthOptions(c.length)}</select></label>
         </div>
+        <label class="f">Longest stretch at the mic<select class="longest">${longestOptions(c.longest)}</select>
+          <span class="help">The AI director can hand them the floor for a proper explanation or a story, up to this long. You can give anyone the stage in the studio box, for example “Benny, take the stage for 3 minutes” (up to 6).</span>
+        </label>
         <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Speed</span><div class="seg speed"></div></div>
         <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Expressiveness</span><div class="seg expr"></div></div>
         <label class="f">Personality &amp; background<textarea class="persona" rows="4" maxlength="1200" placeholder="Who are they? What do they believe, know, care about?">${esc(c.persona)}</textarea></label>
@@ -636,6 +653,7 @@ function openEditor(i) {
   q(".voice").onchange = (e) => { c.voice = e.target.value; changed(); };
   q(".attitude").onchange = (e) => { c.attitude = e.target.value; changed(); };
   q(".length").onchange = (e) => { c.length = e.target.value; changed(); };
+  q(".longest").onchange = (e) => { c.longest = Number(e.target.value); save(); };
   q(".persona").oninput = (e) => { c.persona = e.target.value; save(); };
   q(".style").oninput = (e) => { c.style = e.target.value; save(); };
   seg(q(".speed"), SPEEDS, c.speed, (v) => { c.speed = v; changed(); });
@@ -698,6 +716,61 @@ function openProducerEditor() {
 
 function closeEditor() { $("editor").hidden = true; $("editor").innerHTML = ""; }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("editor").hidden) closeEditor(); });
+
+// ===== invite guests with AI ======================================================================
+// The AI casts whole characters for the topic: it looks through the templates first and writes new people
+// where none fits, picks each a free voice, and adds them to the cast for you to review and edit.
+function openInvite() {
+  if (show.running) return;
+  const ov = $("editor");
+  let count = 2, replace = false, busy = false;
+  ov.innerHTML = `
+    <div class="dialog glass" role="dialog" aria-modal="true" aria-label="Invite guests with AI" style="--c:var(--accent)">
+      <div class="dh"><span class="avatar" style="--c:var(--accent)">${ICON_SPARK}</span><div style="font-size:17px;font-weight:600">Invite guests with AI</div></div>
+      <div class="db">
+        <span class="help">The casting director reads your topic and cast, then invites people who will make the conversation good: a template where one truly fits, a whole new character where none does. You can edit anyone afterwards.</span>
+        <label class="f">Who are you looking for? (optional)
+          <textarea class="hint" rows="3" maxlength="400" placeholder="e.g. a sleep coach, a sceptical parent, someone who disagrees with the others. Leave empty and the AI decides from the topic."></textarea>
+        </label>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">How many</span><div class="seg count"></div></div>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Cast</span><div class="seg mode"></div></div>
+        <div class="invite-note"></div>
+      </div>
+      <div class="df"><button class="btn ghost cancel">Cancel</button><span class="sp"></span><button class="btn primary go">${ICON_SPARK}Invite</button></div>
+    </div>`;
+  const q = (x) => ov.querySelector(x), note = (m, err) => { q(".invite-note").textContent = m; q(".invite-note").className = "invite-note" + (err ? " err" : ""); };
+  seg(q(".count"), [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], count, (v) => { count = v; });
+  seg(q(".mode"), [[false, "Add to my cast"], [true, "Replace my cast"]], replace, (v) => { replace = v; });
+  q(".cancel").onclick = closeEditor;
+  ov.onclick = (e) => { if (e.target === ov && !busy) closeEditor(); };
+  q(".go").onclick = async () => {
+    if (busy) return;
+    if (!keyOk()) return note(`Add your ${prov().label} API key in Settings first.`, true);
+    if (!state.topic.trim()) return note("Give the episode a topic first, so the AI knows who to look for.", true);
+    if (replace && !confirm("Replace the whole cast with the characters the AI invites?")) return;
+    busy = true; q(".go").disabled = true; q(".go").innerHTML = '<span class="spinner light"></span>Casting…'; note("");
+    try {
+      const mine = producer().voice;
+      const res = await post("/api/podcast/invite", {
+        characters: cast(), show: state.show, topic: state.topic, producer: producer().name, hint: q(".hint").value, count, replace,
+        voices: catalog.filter((v) => v.name !== mine).map(({ name, gender, age, locale }) => ({ name, gender, age, locale })),
+        myTemplates: state.myTemplates, provider: state.settings.provider, llmModel: state.settings.llmModel, session: sampleSession,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "the AI did not answer");
+      const made = data.characters.map((c) => normalize({ ...c, name: c.name }));
+      if (replace) state.characters = [];
+      for (const c of made) { c.name = uniqueName(c.name); state.characters.push(c); }
+      save(); renderCast(); closeEditor();
+      setStatus(`Invited ${made.map((c) => c.name).join(", ")}. Click a character to edit them.`);
+    } catch (e) {
+      busy = false; q(".go").disabled = false; q(".go").innerHTML = ICON_SPARK + "Invite"; note(e.message, true);
+    }
+  };
+  ov.hidden = false;
+  q(".hint").focus();
+}
+$("inviteBtn").onclick = openInvite;
 
 // ===== add menu ===================================================================================
 function renderAddMenu() {
@@ -810,7 +883,7 @@ async function sampleLine(c, btn, out) {
 // ===== the show =====================================================================================
 const sampleSession = crypto.randomUUID();
 const show = { session: null, running: false, paused: false, epoch: 0, turns: [], nextTime: 0, note: null, thinkingEl: null, usage: { in: 0, out: 0 },
-  calls: [], lastCut: -99, ttsBusy: false, clips: {}, wps: {} };
+  calls: [], lastCut: -99, ttsBusy: false, clips: {}, wps: {}, floor: null, floorEnd: -99 };
 // Calls-per-minute budget: at most rpm AI calls in any 60 seconds.
 function canCall() {
   const now = performance.now();
@@ -836,7 +909,7 @@ function setControls() {
   $("live").className = "live" + (r ? (show.paused ? " paused" : " on") : "");
   $("liveText").textContent = r ? (show.paused ? "PAUSED" : "ON AIR") : "OFF AIR";
   for (const el of document.querySelectorAll("#cast .sample, #cast .preview, .fmt")) el.disabled = r;
-  $("addChar").disabled = r;
+  $("addChar").disabled = $("inviteBtn").disabled = r;
 }
 
 function validate() {
@@ -854,7 +927,7 @@ async function start() {
   for (const c of state.characters) c.name = c.name.trim();
   previewing?.abort();
   // Clear the last episode before any await, so a second click cannot start a second show.
-  show.turns = []; show.nextTime = 0; show.note = null; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99;
+  show.turns = []; show.nextTime = 0; show.note = null; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99;
   $("transcript").innerHTML = ""; $("turnNo").textContent = "0"; $("clock").textContent = "0:00"; show.signedOff = false;
   show.running = true; show.epoch++;
   show.session = crypto.randomUUID(); // one conversation ID per episode, for providers that route by session
@@ -902,21 +975,27 @@ async function buildReactions(ep) {
 }
 
 function addReaction(turn) {
-  if (!state.settings.reactions || turn.end - turn.start < 3.5) return;
-  if (Math.random() > 0.55) return;
-  const listeners = cast().filter((c) => c.name !== turn.name && show.clips[c.name]?.length);
-  if (!listeners.length) return;
-  const who = listeners[Math.floor(Math.random() * listeners.length)];
-  const options = show.clips[who.name];
-  const clip = options[Math.floor(Math.random() * options.length)];
-  const latest = (turn.cutAt ?? turn.end) - clip.pcm.length / 24000 - 0.3;
-  const when = turn.start + (turn.end - turn.start) * (0.45 + Math.random() * 0.35);
-  if (when > latest || when < ctx.currentTime + 0.1) return;
-  const buf = ctx.createBuffer(1, clip.pcm.length, 24000); buf.copyToChannel(clip.pcm, 0);
-  const src = ctx.createBufferSource(), gain = ctx.createGain();
-  gain.gain.value = 0.5; src.buffer = buf; src.connect(gain); gain.connect(analyser);
-  src.start(when);
-  turn.reactions.push({ pcm: clip.pcm, when, gain: 0.5, src });
+  if (!state.settings.reactions) return;
+  const dur = turn.end - turn.start;
+  if (dur < 3.5) return;
+  // Short lines get one now and then; a long stretch at the mic gets a nod roughly every 14 seconds.
+  const k = dur < 14 ? (Math.random() < 0.55 ? 1 : 0) : Math.min(5, Math.round(dur / 14));
+  for (let i = 0; i < k; i++) {
+    const listeners = cast().filter((c) => c.name !== turn.name && show.clips[c.name]?.length);
+    if (!listeners.length) return;
+    const who = listeners[Math.floor(Math.random() * listeners.length)];
+    const options = show.clips[who.name];
+    const clip = options[Math.floor(Math.random() * options.length)];
+    const lo = k === 1 ? 0.45 : 0.12 + (0.76 * i) / k, hi = k === 1 ? 0.8 : 0.12 + (0.76 * (i + 1)) / k;
+    const when = turn.start + dur * (lo + Math.random() * (hi - lo));
+    const latest = (turn.cutAt ?? turn.end) - clip.pcm.length / 24000 - 0.3;
+    if (when > latest || when < ctx.currentTime + 0.1) continue;
+    const buf = ctx.createBuffer(1, clip.pcm.length, 24000); buf.copyToChannel(clip.pcm, 0);
+    const src = ctx.createBufferSource(), gain = ctx.createGain();
+    gain.gain.value = 0.5; src.buffer = buf; src.connect(gain); gain.connect(analyser);
+    src.start(when);
+    turn.reactions.push({ pcm: clip.pcm, when, gain: 0.5, src });
+  }
 }
 
 const aiCount = () => show.turns.filter((t) => !t.human).length;
@@ -950,21 +1029,69 @@ function pickNext(phase, mode = state.settings.turnMode) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+// The floor: a character can hold the stage for a stretch, spoken as back-to-back parts of up to about
+// a minute each. The producer can hand anyone the stage (up to FLOOR_MAX seconds); otherwise the AI
+// director may, within each character's own limit. It ends when the time is used, the host starts the
+// closing, or the producer speaks.
+const FLOOR_MAX = 360;
+const wpsOf = (name) => show.wps[name] || 2.4;
+const plannedSecs = () => { const first = show.turns.find((t) => t.start !== null); return first ? show.nextTime - first.start : 0; };
+const timeLeft = () => (state.settings.minutes || 10) * 60 - 20 - plannedSecs();
+
+// "Benny, take the stage for 4 minutes": one name plus a length (typos such as "5 minute" and "4 minuts" included).
+const NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, "a couple of": 2, couple: 2, "a few": 3, half: 0.5, "half a": 0.5 };
+function parseFloor(text, people) {
+  const named = people.filter((c) => mentions(text, [c]));
+  if (named.length !== 1) return null;
+  const who = named[0];
+  // Word numbers become digits first: "two minutes", "a couple of minutes", "half a minute".
+  const prepared = text.replace(/\b(a couple of|a few|half a|an|a|one|two|three|four|five|six)\b(?=\s*-?\s*(?:mins?|minutes?|minuts?)\b)/gi, (w) => NUMBER_WORDS[w.toLowerCase()]);
+  const dur = prepared.match(/(\d+(?:\.\d+)?)\s*-?\s*(?:mins?|minutes?|minuts?)\b/i);
+  if (dur && /\b(stage|floor|mic|microphone|speak|talk|go on|continue|carry on|keep going|explain|finish|take over|hold)\b/i.test(text))
+    return { who, secs: Math.round(parseFloat(dur[1]) * 60) };
+  if (/\b(the stage|the floor|at length|in detail|keep going|go on|carry on|continue)\b/i.test(text)) return { who, secs: who.longest || 90 };
+  return null;
+}
+function grantFloor(who, secs, by) {
+  secs = Math.min(FLOOR_MAX, secs, timeLeft()); // never past the time left in the episode
+  if (secs < 30) return false;
+  show.floor = { name: who.name, secs, used: 0, segs: 0, by };
+  return true;
+}
+// What the holder says next: the first part, more of it, or the last part.
+function floorPlan() {
+  const f = show.floor, left = f.secs - f.used, words = left * wpsOf(f.name);
+  const finishing = words <= 190;
+  return { mode: f.segs === 0 ? "start" : finishing ? "last" : "continue", words: finishing ? Math.max(30, Math.round(words)) : 150,
+    secs: f.secs, by: f.by, finishing };
+}
+
 // Smart turn-taking: obvious cases are decided here, everything else by an AI director that reads the
 // whole conversation and says who would naturally speak next and what they want to say. If the director
 // is slow, over budget or confused, the simple rule decides instead, so it never holds up the show.
+// The producer's word always wins: a stage handed out in the studio box is granted right here, and any
+// other order from them goes to the director.
 async function chooseNext(phase, ep) {
-  if (state.settings.turnMode !== "smart") return { speaker: pickNext(phase) };
   const people = cast();
   const host = people.find((c) => c.role === "host") || people[0];
-  if (aiCount() === 0 || phase === "close") return { speaker: host };
   const last = show.turns[show.turns.length - 1];
+  if (phase === "close" || aiCount() === 0) show.floor = null;
+  if (show.floor) {
+    const c = people.find((x) => x.name === show.floor.name);
+    if (c && show.floor.secs - show.floor.used >= 12) return { speaker: c, floor: floorPlan() };
+    show.floor = null;
+  }
+  if (phase === "normal" && last && (show.note || last.human)) {
+    const f = parseFloor(show.note || last.text, people);
+    if (f && grantFloor(f.who, f.secs, "producer")) return { speaker: f.who, floor: floorPlan() };
+  }
+  if (state.settings.turnMode !== "smart") return { speaker: pickNext(phase) };
+  if (aiCount() === 0 || phase === "close") return { speaker: host };
   const others = people.filter((c) => c.name !== last.name);
   if (others.length === 1) return { speaker: others[0] };
   const named = (text) => others.filter((c) => mentions(text, [c]));
-  if (show.note && named(show.note).length === 1) return { speaker: named(show.note)[0] }; // your note names someone
-  if (last.human) return { speaker: named(last.text).length === 1 ? named(last.text)[0] : host };
-  if (/\?/.test(last.text)) { // asked someone by name near the end of the line
+  const bossed = !!show.note || last.human; // the producer has said something to act on
+  if (!bossed && /\?/.test(last.text)) { // asked someone by name near the end of the line
     const asked = pickNext(phase, "natural");
     if (mentions(last.text.slice(Math.floor(last.text.length * 0.45)), [asked])) return { speaker: asked };
   }
@@ -979,10 +1106,18 @@ async function chooseNext(phase, ep) {
       const d = await res.json();
       const speaker = res.ok && others.find((c) => c.name === d.next);
       if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
-      if (speaker) return { speaker, intent: d.intent, wantsCut: d.cutIn };
+      if (speaker) {
+        let floor = null;
+        // A long turn: whenever the producer is involved, or when this person is allowed one and the last was a while ago.
+        const allowed = bossed || (speaker.longest > 0 && show.turns.length - show.floorEnd >= 8);
+        if (d.floor >= 30 && allowed && grantFloor(speaker, bossed ? d.floor : Math.min(d.floor, speaker.longest), bossed ? "producer" : "director")) floor = floorPlan();
+        return { speaker, intent: d.intent, wantsCut: d.cutIn && !floor, floor };
+      }
     } catch {}
     if (!alive(ep)) return { speaker: host };
   }
+  if (show.note && named(show.note).length === 1) return { speaker: named(show.note)[0] }; // your note names someone
+  if (last.human && named(last.text).length === 1) return { speaker: named(last.text)[0] };
   return { speaker: pickNext(phase, "natural") };
 }
 
@@ -990,9 +1125,7 @@ async function chooseNext(phase, ep) {
 // (less a line's worth), the host is told to wrap up. Nobody else knows when that will be.
 function episodePhase() {
   if (aiCount() === 0) return "open";
-  const first = show.turns.find((t) => t.start !== null);
-  const planned = first ? show.nextTime - first.start : 0;
-  return planned >= (state.settings.minutes || 10) * 60 - 20 ? "close" : "normal";
+  return plannedSecs() >= (state.settings.minutes || 10) * 60 - 20 ? "close" : "normal";
 }
 
 async function loop(ep) {
@@ -1005,25 +1138,29 @@ async function loop(ep) {
       if (!alive(ep)) return;
 
       const phase = episodePhase();
-      const { speaker, intent, wantsCut } = await chooseNext(phase, ep);
+      const { speaker, intent, wantsCut, floor } = await chooseNext(phase, ep);
       if (!alive(ep)) return;
       const note = show.note; show.note = null;
-      const cut = phase === "normal" ? planInterruption(prev, speaker, wantsCut) : null;
+      const cut = phase === "normal" && !floor ? planInterruption(prev, speaker, wantsCut) : null;
       showThinking(speaker);
       const data = await askAI({
         characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase, note,
         transcript: show.turns.map((t) => ({ name: t.name, text: t === prev && cut ? cut.text : t.llmText ?? t.text })),
-        cutIn: cut ? prev.name : null, producer: producer().name, intent,
+        cutIn: cut ? prev.name : null, producer: producer().name, intent, floor: floor || undefined,
         length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
       }, ep);
       if (!alive(ep)) return;
       if (data.usage) { show.usage.in += data.usage.in; show.usage.out += data.usage.out; }
+      if (floor && show.floor?.name === speaker.name) { // count the time this part will take; end the floor when it is used up
+        show.floor.used += data.text.split(/\s+/).length / wpsOf(speaker.name); show.floor.segs++;
+        if (floor.finishing || show.floor.secs - show.floor.used < 12) { show.floor = null; show.floorEnd = show.turns.length + 1; }
+      }
 
       const turn = { name: speaker.name, who: { ...speaker }, text: data.text, pcm: [], sources: [], reactions: [], gain: null,
-        start: null, end: null, done: false, abort: new AbortController(), el: null, cutsPrev: cut, phase };
+        start: null, end: null, done: false, abort: new AbortController(), el: null, cutsPrev: cut, phase, floor: floor?.mode };
       hideThinking();
       show.turns.push(turn);
-      turn.entry = logEntry({ type: "line", name: speaker.name, role: speaker.role, phase, text: data.text, cutIn: cut ? prev.name : undefined, note: note || undefined, intent: intent || undefined });
+      turn.entry = logEntry({ type: "line", name: speaker.name, role: speaker.role, phase, text: data.text, cutIn: cut ? prev.name : undefined, note: note || undefined, intent: intent || undefined, floor: floor?.mode });
       renderTurn(turn);
       await waitUntil(() => !alive(ep) || !prev || prev.done); // never overlap two lines' audio
       if (!alive(ep)) return;
@@ -1064,7 +1201,7 @@ async function askAI(body, ep) {
 // you, and never soon after the last real cut. With the director, only when it says this person can't wait.
 function planInterruption(prev, speaker, wantsCut) {
   const level = state.settings.interrupts ?? 1;
-  if (!level || !prev || prev.human || prev.phase === "open" || prev.cutAt || prev.cutsPrev) return null;
+  if (!level || !prev || prev.human || prev.floor || prev.phase === "open" || prev.cutAt || prev.cutsPrev) return null;
   if (show.turns.length - show.lastCut < (level === 2 ? 4 : 7)) return null;
   const words = prev.text.split(/\s+/);
   if (words.length < 12) return null;
@@ -1087,7 +1224,7 @@ function naturalGap(prev) {
 
 async function speakTurn(turn) {
   const prev = show.turns[show.turns.indexOf(turn) - 1];
-  let gap = prev ? naturalGap(prev) : 0;
+  let gap = prev ? (prev.name === turn.name ? 0.12 : naturalGap(prev)) : 0; // a held floor flows on without a pause
   // Cutting in: fade the last speaker out partway through and start a beat before they stop.
   if (turn.cutsPrev && prev && prev.done && prev.gain) {
     const cutAt = prev.start + (prev.end - prev.start) * turn.cutsPrev.frac;
@@ -1154,6 +1291,7 @@ function dropQueued() {
 }
 
 function steer(text) {
+  show.floor = null; // a new order from the producer replaces any stage they gave earlier
   dropQueued();
   const note = document.createElement("div");
   note.className = "note"; note.textContent = `Producer note: ${text}`;
@@ -1164,8 +1302,34 @@ function steer(text) {
   loop(show.epoch);
 }
 
+// You speak over whoever is talking: their line fades out at once and you take the mic. This is what makes
+// the producer the boss, and it matters most when someone has the floor for a minute or more.
+function cutPlaying() {
+  const now = ctx.currentTime, cutAt = now + 0.3;
+  const t = show.turns.find((x) => !x.human && !x.cutAt && x.start !== null && x.start <= now && (now < x.end || !x.done));
+  if (!t || !t.gain) return;
+  const words = t.text.split(/\s+/);
+  const dur = t.done ? t.end - t.start : Math.max(t.end - t.start, words.length / wpsOf(t.name));
+  const k = Math.max(3, Math.round(words.length * Math.min(1, (cutAt - t.start) / dur)));
+  if (k >= words.length - 2) return; // nearly finished: let it end
+  t.gain.gain.setValueAtTime(1, cutAt);
+  t.gain.gain.linearRampToValueAtTime(0, cutAt + 0.15);
+  t.sources.forEach((src) => { try { src.stop(cutAt + 0.2); } catch {} });
+  t.reactions = t.reactions.filter((r) => {
+    if (r.when + r.pcm.length / 24000 < cutAt) return true;
+    try { r.src.stop(); } catch {}
+    return false;
+  });
+  if (!t.done) { t.abort.abort(); t.done = true; } // stop generating the rest of the line
+  t.cutAt = cutAt; t.cutText = words.slice(0, k).join(" ").replace(/[,.;:!?]+$/, "") + "—"; t.llmText = t.cutText; t.end = cutAt + 0.15;
+  if (t.entry) { t.entry.cut = t.cutText; t.entry.byProducer = true; saveRecord(); }
+  show.nextTime = cutAt - 0.05;
+}
+
 // You speak on air: your line is voiced like any other and the characters answer it.
 function sayOnAir(text) {
+  show.floor = null;
+  cutPlaying();
   dropQueued();
   const prev = show.turns[show.turns.length - 1];
   const me = producer();

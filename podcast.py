@@ -63,6 +63,12 @@ LENGTHS = {
     "long": ("four or five sentences, under 110 words", 300, 5),
 }
 
+# Long turns: a character can be handed the floor for a stretch (a story, a proper explanation), spoken
+# as several back-to-back parts. `longest` on a character is how long the AI director may hold them there;
+# the producer can ask for more, up to FLOOR_MAX seconds.
+FLOOR_MAX = 360
+LONGEST_CHOICES = (0, 60, 120, 180)
+
 ATTITUDES = {
     "balanced": ("Balanced", ""),
     "friendly": ("Friendly", "Warm and encouraging. Gives others credit and looks for common ground."),
@@ -79,9 +85,9 @@ ATTITUDES = {
 }
 
 # Delivery: speed -2 (very slow) to 2 (very fast); expr 0 (calm) to 3 (dramatic); length "" uses the episode setting.
-def _char(id, name, role, voice, attitude, persona, style, speed=0, expr=1, length=""):
+def _char(id, name, role, voice, attitude, persona, style, speed=0, expr=1, length="", longest=0):
     return {"id": id, "name": name, "role": role, "voice": voice, "attitude": attitude, "persona": persona,
-            "style": style, "speed": speed, "expr": expr, "length": length}
+            "style": style, "speed": speed, "expr": expr, "length": length, "longest": longest}
 
 
 CHARACTER_TEMPLATES = [
@@ -93,28 +99,28 @@ CHARACTER_TEMPLATES = [
           "Dry and measured.", speed=-1),
     _char("t-founder", "Jake", "guest", "Russell", "enthusiastic",
           "A startup founder who just raised a big round. Thinks everything will change in the next two years.",
-          "Fast, punchy, lots of big claims.", speed=1, expr=2),
+          "Fast, punchy, lots of big claims.", speed=1, expr=2, longest=60),
     _char("t-professor", "Dr. Eleanor Hart", "guest", "Everly", "calm",
           "A university professor and researcher. Explains complex ideas simply and cites studies.",
-          "Patient and clear, likes a good analogy.", speed=-1, expr=0, length="medium"),
+          "Patient and clear, likes a good analogy.", speed=-1, expr=0, length="medium", longest=120),
     _char("t-comedian", "Benny", "guest", "Micah", "funny",
           "A stand-up comedian who turns every topic into a bit, but is surprisingly sharp underneath.",
-          "Rapid-fire, playful, loves a callback.", speed=1, expr=3),
+          "Rapid-fire, playful, loves a callback.", speed=1, expr=3, longest=60),
     _char("t-journalist", "Priya", "host", "Maeve", "provocative",
           "An investigative journalist who asks the uncomfortable questions and follows the money.",
           "Crisp and direct, never lets a dodge slide."),
     _char("t-veteran", "Walt", "guest", "Edwin", "grumpy",
           "A retired engineer who thinks things were better built in the old days, and has the stories to prove it.",
-          "Slow, gravelly complaints with a punchline.", speed=-2, expr=1),
+          "Slow, gravelly complaints with a punchline.", speed=-2, expr=1, longest=120),
     _char("t-creator", "Zoey", "guest", "Zoey", "enthusiastic",
           "A Gen Z content creator with two million followers. Knows what is trending and why.",
           "Upbeat, casual, says 'literally' a lot.", speed=1, expr=2),
     _char("t-wizard", "Master Aldric", "host", "Master Aldric", "calm",
           "An ancient wizard who has seen empires rise and fall. Speaks in riddles but means well.",
-          "Grand and unhurried.", speed=-2, expr=2, length="medium"),
+          "Grand and unhurried.", speed=-2, expr=2, length="medium", longest=120),
     _char("t-pirate", "Captain Silas", "guest", "Captain Silas Blackwater", "dramatic",
           "A pirate captain from the West Country with a tall tale for every occasion.",
-          "Booming and theatrical, rolls his Rs.", expr=3),
+          "Booming and theatrical, rolls his Rs.", expr=3, longest=120),
 ]
 _T = {t["id"]: t for t in CHARACTER_TEMPLATES}
 
@@ -215,6 +221,10 @@ def episode_text(rec):
             tags.append("cut off here")
         if e.get("phase") in ("open", "close"):
             tags.append(e["phase"])
+        if e.get("floor"):
+            tags.append({"start": "takes the floor", "continue": "still holding the floor", "last": "ends their time at the mic"}[e["floor"]])
+        if e.get("byProducer"):
+            tags.append("cut off by the producer")
         line = f"{who}: {text}" + (f"   [{', '.join(tags)}]" if tags else "")
         if e.get("dropped"):
             line = f"(not played) {line}"
@@ -294,7 +304,8 @@ class RateLimited(RuntimeError):
         self.retry_after = retry_after
 
 
-def system_prompt(me, cast, show, topic, length, phase, note, cut_in=None, producer=None, cues=()):
+def system_prompt(me, cast, show, topic, length, phase, note, cut_in=None, producer=None, cues=(), floor=None):
+    spec = LENGTHS[length] if isinstance(length, str) else length
     others = [c for c in cast if c["name"] != me["name"]]
     host = me.get("role") == "host"
     lines = [
@@ -316,14 +327,14 @@ def system_prompt(me, cast, show, topic, length, phase, note, cut_in=None, produ
                 intro = ": " + re.split(r"(?<=[.!?])\s", c["persona"].strip())[0]
             lines.append(f'- {c["name"]}, the {c.get("role", "guest")}{intro}')
     if producer:
-        lines.append(f"- {producer}, the show's producer: a real person in the studio who sometimes joins in. "
-                     "When they speak, respond to them directly, like a guest who just joined the conversation.")
+        lines.append(f"- {producer}, the show's producer and the boss: a real person in the studio who sometimes joins in. "
+                     "What they ask for happens, immediately.")
     lines += [
         f"Today's topic: {topic.strip()}",
         "Nobody has planned where this conversation goes. Follow it wherever it leads, and let your views change if someone makes a good point.",
         "",
         "Rules:",
-        f'- Reply with only what {me["name"]} says next, out loud: {LENGTHS[length][0]}.',
+        f'- Reply with only what {me["name"]} says next, out loud: {spec[0]}.',
         "- This is spoken audio read by a text-to-speech voice. Plain spoken English only: no markdown, lists, emoji, "
         "stage directions, sound effects or written laughter such as ha or haha.",
         "- Stay fully in character. Your attitude and way of speaking should be obvious in every line: your word choice, "
@@ -335,11 +346,17 @@ def system_prompt(me, cast, show, topic, length, phase, note, cut_in=None, produ
         "\"No, no, no\" or \"Fair enough\". Vary your shape: sometimes a blunt one-liner, sometimes a quick story.",
         "- Never write lines for anyone else and never start with your own name. Do not repeat points already made "
         "and do not summarise the conversation.",
+        *([f"- The producer, {producer}, is the boss and their word is final. If they ask for something, do it at once and "
+           "exactly, even if it takes the conversation somewhere new. Never treat their request as a distraction."] if producer else []),
     ]
-    if host:
+    if floor:
+        lines.append("- You are holding the floor: you are talking, not interviewing. Do not greet anyone, do not ask the others "
+                     "a question, and speak as one continuous stretch of talk.")
+    elif host:
         lines.append("- You are the host, so you steer. React briefly in your own voice, then either ask one sharp follow-up "
                      "or bring in a guest who has been quiet, by name. When you move to a new angle, link it to what was "
-                     "just said so the turn feels natural. Keep it short: the guests are the stars.")
+                     "just said so the turn feels natural. Keep it short: the guests are the stars. The producer's wishes "
+                     "always come before your steering.")
     else:
         lines.append("- You are a guest, not an interviewer. You answer, argue, tell stories and give opinions. "
                      "Do not end your line with a question, except a pointed challenge to someone you disagree with. "
@@ -351,13 +368,30 @@ def system_prompt(me, cast, show, topic, length, phase, note, cut_in=None, produ
         lines.append("- This is an audition before the show. Introduce yourself in character and give your opening take on the topic.")
     elif phase == "close":
         lines.append("- This is the last line of the episode. Wrap up in two or three sentences, thank everyone by name and sign off.")
+    if floor:
+        mins = max(1, round(floor.get("secs", 60) / 60))
+        mode = floor.get("mode")
+        by_boss = floor.get("by") == "producer"
+        if mode == "start" and by_boss:
+            lines.append(f"- The producer has put you on the stage for about {mins} minute{'s' if mins != 1 else ''}. This is the first part of "
+                         "your turn at the mic: give your real, detailed opinion on the topic and on what has been said so far. Build one clear "
+                         "argument with a concrete example or story, in your own voice. Do not wrap up yet.")
+        elif mode == "start":
+            lines.append(f"- You have the floor for a longer stretch (up to about {mins} minute{'s' if mins != 1 else ''} in all) because this "
+                         "deserves a proper answer or story. This is the first part: develop one idea with a concrete example. Do not wrap up yet.")
+        elif mode == "continue":
+            lines.append("- You still have the floor. Carry straight on from your last words: the next step of the argument or story. "
+                         "New content only, nothing repeated, no wrap-up yet.")
+        elif mode == "last":
+            lines.append("- This is the end of your time at the mic. Finish your point with one strong closing beat and hand the "
+                         "conversation back.")
     for cue in cues:
         lines.append(f"- {cue}")
     if cut_in:
         lines.append(f"- You are cutting in: {cut_in} was interrupted mid-sentence (their line ends with a dash). "
                      "Jump in with a quick interjection such as \"Wait, wait\", \"Hold on\" or \"Sorry, but\", then make your point fast.")
     if note:
-        lines.append(f"- Producer's note, which only you can see: {note.strip()}")
+        lines.append(f"- Producer's order, which only you can see. Carry it out exactly: {note.strip()}")
     return "\n".join(lines)
 
 
@@ -369,7 +403,8 @@ def turn_cues(me, cast, transcript, producer, intent=None):
         if last["name"] != me["name"] and re.search(rf"\b{re.escape(me['name'])}\b", last["text"]) and "?" in last["text"]:
             cues.append(f"{last['name']} just asked you directly. Answer that first, in your own way.")
         elif producer and last["name"] == producer:
-            cues.append(f"{producer}, the producer, just spoke. Respond to what they said.")
+            cues.append(f"{producer}, the producer and your boss, just spoke. Do what they asked, fully and right now. "
+                        "If they asked someone else, give way with one short line.")
     if intent:
         cues.append(f"What you want to do now: {intent}")
     if me.get("role") == "host" and len(transcript) >= 4:
@@ -385,6 +420,8 @@ def user_prompt(me, transcript):
         return f'The recording has started. Say {me["name"]}\'s first line.'
     convo = "\n".join(f'{t["name"]}: {t["text"]}' for t in transcript[-40:])
     last = transcript[-1]
+    if last["name"] == me["name"]:  # holding the floor: carry on from their own last words
+        return f"Conversation so far:\n{convo}\n\nSay {me['name']}'s next part, carrying straight on from where they left off."
     return (f"Conversation so far:\n{convo}\n\nThe last thing said was {last['name']}: \"{last['text']}\"\n"
             f"Say {me['name']}'s next line, responding to that.")
 
@@ -489,26 +526,33 @@ def generate_turn(req):
     phase = req.get("phase", "normal")
     transcript = req.get("transcript", [])
     producer = (req.get("producer") or "").strip() or None
+    floor = req.get("floor") if isinstance(req.get("floor"), dict) and req["floor"].get("mode") in ("start", "continue", "last") else None
+    spec = LENGTHS[length]
+    if floor:  # a long turn is written in parts of 30 to 170 words, with a token and sentence budget to match
+        words = max(30, min(170, int(floor.get("words") or 120)))
+        spec = (f"about {words} words of natural, continuous speech", int(words * 1.8) + 60, max(3, round(words / 11)))
 
     if FAKE:
+        if floor:
+            return {"name": me["name"], "text": fake_floor(me, words)}
         line = fake_line(me, cast, transcript, phase)
         return {"name": me["name"], "text": f"Wait, hold on. {line}" if req.get("cutIn") else line}
 
     others = [c["name"] for c in cast if c["name"] != me["name"]]
     messages = [
-        {"role": "system", "content": system_prompt(me, cast, req.get("show", "the show"), req.get("topic", ""), length, phase,
+        {"role": "system", "content": system_prompt(me, cast, req.get("show", "the show"), req.get("topic", ""), spec, phase,
                                                     req.get("note"), req.get("cutIn"), producer,
-                                                    turn_cues(me, cast, transcript, producer, req.get("intent")))},
+                                                    turn_cues(me, cast, transcript, producer, req.get("intent")), floor)},
         {"role": "user", "content": user_prompt(me, transcript)},
     ]
     stop = [f"\n{n}:" for n in others + ([producer] if producer else [])][:4]  # four is the most every provider accepts
-    data, model, name = chat(req, messages, LENGTHS[length][1], req.get("temperature", 1.0), stop)
+    data, model, name = chat(req, messages, spec[1], req.get("temperature", 1.0), stop)
 
     choice = data["choices"][0]
     raw = re.sub(r"(?s)<think>.*?(</think>|$)", "", choice["message"].get("content") or "")  # inline reasoning
     # The opening and the sign-off get one extra sentence for the welcome or the thank-yous.
     everyone = cast + ([{"name": producer}] if producer else [])
-    text = limit_sentences(clean(raw, me, everyone), LENGTHS[length][2] + (1 if phase in ("open", "close") else 0))
+    text = limit_sentences(clean(raw, me, everyone), spec[2] + (1 if phase in ("open", "close") else 0))
     if not text:
         if choice.get("finish_reason") == "length":
             raise RuntimeError(f"{model} spent its whole reply budget thinking. Pick a faster model.")
@@ -530,20 +574,27 @@ def direct(req):
     candidates = [c for c in cast if c["name"] != last]
     if not candidates:
         raise ValueError("nobody to pick")
+    by_boss = bool(req.get("note")) or (bool(producer) and last == producer)  # the producer's word is in play
     if FAKE:
         pick = random.choice(candidates)
-        return {"next": pick["name"], "intent": "Respond directly to the last point.", "cutIn": random.random() < 0.2}
+        floor = pick.get("longest", 0) if random.random() < 0.3 else 0
+        return {"next": pick["name"], "intent": "Respond directly to the last point.", "cutIn": random.random() < 0.2, "floor": floor}
 
     counts = {c["name"]: sum(1 for t in transcript if t["name"] == c["name"]) for c in cast}
     sheet = "\n".join(
         f'- {c["name"]} ({c.get("role", "guest")}, {c.get("attitude") or "balanced"}): {c.get("persona", "").strip()} '
-        f'Has spoken {counts[c["name"]]} times.' for c in cast)
+        f'Has spoken {counts[c["name"]]} times. '
+        + (f'Can hold the floor for a long stretch, up to {int(c["longest"])} seconds.' if c.get("longest") else "Short turns only.")
+        for c in cast)
     system = "\n".join([
         f'You direct a live, unscripted audio podcast called "{req.get("show", "the show")}". Today\'s topic: {req.get("topic", "").strip()}',
         "The people at the table:",
         sheet,
-        *([f"- {producer}: the producer, a real person in the studio who sometimes speaks."] if producer else []),
+        *([f"- {producer}: the producer and the boss, a real person in the studio who sometimes speaks."] if producer else []),
         "",
+        "The producer's word is final. If their latest message (in the conversation, or the private order below) asks for "
+        "something, such as who should speak, who should take the stage or continue for some minutes, or to move on from a "
+        "subject, do exactly that: pick that person and make the intent carry it out. Never treat it as a distraction.",
         "Read the conversation and decide who would naturally speak next, the way a real conversation flows: "
         "whoever was just asked something, whoever the last line most provokes or concerns given who they are, "
         "or whoever has a direct answer to the point on the table. The host steps in to move things on or to bring "
@@ -555,14 +606,18 @@ def direct(req):
         "they think, not in what they talk about.",
         "cutIn is true only when this person would genuinely be unable to wait, for example a strong disagreement "
         "or being misquoted. It is rare: most turns are false.",
-        f'Reply with JSON only: {{"next": "<one of: {", ".join(c["name"] for c in candidates)}>", "intent": "<one short sentence>", "cutIn": false}}',
+        "floor is 0 for a normal reply. Set it to a number of seconds only when (a) the producer asked someone to speak at length "
+        "(use the time they asked for, at most %d), or (b) the next speaker is marked as able to hold the floor and the point on the "
+        "table needs a proper explanation or a story rather than a quick reply (choose between 60 and their maximum). Case (b) is rare: "
+        "never twice in a row." % FLOOR_MAX,
+        f'Reply with JSON only: {{"next": "<one of: {", ".join(c["name"] for c in candidates)}>", "intent": "<one short sentence>", "cutIn": false, "floor": 0}}',
     ])
     convo = "\n".join(f'{t["name"]}: {t["text"]}' for t in transcript[-16:]) or "(nothing yet)"
     if req.get("note"):
-        system += f"\nThe producer has privately asked for this next: {str(req['note']).strip()[:300]}"
+        system += f"\nThe producer's private order for the next line, which must be carried out: {str(req['note']).strip()[:300]}"
     messages = [{"role": "system", "content": system},
                 {"role": "user", "content": f"Conversation so far:\n{convo}\n\nWho speaks next? JSON only."}]
-    data, _, name = chat(req, messages, 120, 0.4, timeout=20)
+    data, _, name = chat(req, messages, 140, 0.4, timeout=20)
     raw = re.sub(r"(?s)<think>.*?(</think>|$)", "", data["choices"][0]["message"].get("content") or "")
     m = re.search(r"\{.*\}", raw, re.S)
     if not m:
@@ -573,9 +628,156 @@ def direct(req):
         or next((c for c in candidates if wanted and (wanted in c["name"].lower() or c["name"].lower() in wanted)), None)
     if not pick:
         raise RuntimeError(f"director picked someone not at the table: {out.get('next')!r}")
+    # The producer can hand anyone the stage up to FLOOR_MAX; otherwise the person's own limit is the cap.
+    try:
+        floor = int(float(out.get("floor") or 0))
+    except (TypeError, ValueError):
+        floor = 0
+    cap = FLOOR_MAX if by_boss else int(pick.get("longest") or 0)
+    floor = min(floor, cap)
+    if floor < 30:
+        floor = 0
     usage = data.get("usage", {})
-    return {"next": pick["name"], "intent": str(out.get("intent") or "").strip()[:200], "cutIn": out.get("cutIn") is True,
-            "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
+    return {"next": pick["name"], "intent": str(out.get("intent") or "").strip()[:200], "cutIn": out.get("cutIn") is True and not floor,
+            "floor": floor, "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
+
+
+# ---- casting ---------------------------------------------------------------------------
+# "Invite with AI": the casting director looks through the template library first and writes whole new
+# characters only for what no template fits. The reply is checked field by field before it reaches the app.
+
+def _clamp_int(v, lo, hi, default):
+    try:
+        return max(lo, min(hi, int(float(v))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _first_sentence(text):
+    return re.split(r"(?<=[.!?])\s", (text or "").strip())[0]
+
+
+def _snap_longest(v):
+    try:
+        v = int(float(v))
+    except (TypeError, ValueError):
+        return 0
+    return min(LONGEST_CHOICES, key=lambda c: abs(c - v))
+
+
+def invite(req):
+    cast = [c for c in req.get("characters", []) if c.get("name", "").strip()]
+    producer = (req.get("producer") or "").strip()
+    replace = bool(req.get("replace"))
+    keep = [] if replace else cast
+    count = max(1, min(4, int(req.get("count") or 2)))
+    hint = str(req.get("hint") or "").strip()[:400]
+    topic = str(req.get("topic") or "").strip()
+    voices = [v for v in req.get("voices", []) if v.get("name")]
+    mine = [t for t in req.get("myTemplates", []) if t.get("name")]
+    library = CHARACTER_TEMPLATES + [dict(t, id=t.get("id") or "my-" + t["name"]) for t in mine]
+    in_cast = {c["name"].lower() for c in keep}
+    library = [t for t in library if t["name"].lower() not in in_cast]  # never invite someone who is already at the table
+    need_host = not any(c.get("role") == "host" for c in keep)
+    taken_names = {c["name"].lower() for c in keep} | ({producer.lower()} if producer else set())
+    taken_voices = {c.get("voice") for c in keep if c.get("voice")}
+
+    if FAKE:
+        raw = {"characters": [
+            {"name": n, "role": "guest", "gender": g, "voice": "", "attitude": a, "persona": f"{n} lives this topic every day and has a firm view on it.",
+             "style": "Direct and warm.", "speed": 0, "expr": 1, "longest": 120}
+            for n, g, a in [("Dr. Lena Okafor", "female", "calm"), ("Marcus Reid", "male", "skeptical"),
+                            ("Aiko Tanaka", "female", "curious"), ("Sam Ortega", "male", "provocative")][:count]]}
+    else:
+        def line(v):
+            tag = " [novelty character voice]" if v.get("locale") == "characters" else ""
+            return f'- {v["name"]} ({v.get("gender") or "n/a"}, {v.get("age") or "n/a"}){tag}'
+        lib = "\n".join(f'- {t["id"]}: {t["name"]}, {t.get("role", "guest")}, {t.get("attitude", "balanced")}. '
+                        f'{_first_sentence(t.get("persona"))}' for t in library)
+        now = "\n".join(f'- {c["name"]} ({c.get("role", "guest")}, {c.get("attitude", "balanced")}): {(c.get("persona") or "").strip()[:200]}'
+                        for c in keep) or "(nobody yet)"
+        system = "\n".join([
+            f'You are the casting director of an unscripted audio podcast called "{req.get("show", "the show")}".',
+            f"Topic: {topic}",
+            "Already in the cast:", now,
+            f"Invite {count} {'person' if count == 1 else 'people'} so the conversation will be genuinely good on THIS topic."
+            + (f" The producer asks for: {hint}" if hint else ""),
+            *(["There is no host yet, so the first one must have role \"host\"."] if need_host else
+              ['Everyone you invite has role "guest".']),
+            "",
+            "First look through this library of ready-made characters. Use one only if it truly fits the topic, by returning "
+            '{"template": "<its id>"}:',
+            lib,
+            "Wherever none fits, write a whole new character: a vivid, specific person with a real stake in this topic, not a job title. "
+            "Bring different angles and at least one who will disagree with the others; do not repeat a profession, attitude or voice "
+            "already in the cast. New characters have these fields:",
+            '{"name": "<first name, with a title only if natural>", "role": "host|guest", "gender": "female|male", "voice": "<exactly one name from the voice list>", '
+            f'"attitude": "<one of: {", ".join(ATTITUDES)}>", "persona": "<2 to 3 sentences: who they are, what they believe about this topic, one specific experience>", '
+            '"style": "<a short phrase on how they talk>", "speed": <-2 to 2>, "expr": <0 to 3>, '
+            '"longest": <0, 60, 120 or 180: how long they may talk at a stretch; give 120 to people who explain or tell stories, 0 to quick talkers>}',
+            "Choose each voice to suit the person (gender, age, energy). Never reuse a voice. Voices marked novelty are for fantasy or role-play topics only. Voices:",
+            *[line(v) for v in voices if v["name"] not in taken_voices],
+            "",
+            'Reply with JSON only: {"characters": [ ... ]}',
+        ])
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": "Cast the episode. JSON only."}]
+        data, _, name = chat(req, messages, 420 * count + 200, 0.9, timeout=60)
+        text = re.sub(r"(?s)<think>.*?(</think>|$)", "", data["choices"][0]["message"].get("content") or "")
+        m = re.search(r"\{.*\}", text, re.S)
+        if not m:
+            raise RuntimeError(f"{name} did not return any characters")
+        raw = json.loads(m.group(0))
+        raw["usage"] = data.get("usage", {})
+
+    by_voice = {v["name"]: v for v in voices}
+    used = set(taken_voices)
+    made = []
+    for item in (raw.get("characters") or [])[:count]:
+        if not isinstance(item, dict):
+            continue
+        tpl = next((t for t in library if item.get("template") and t["id"] == item["template"]), None)
+        if tpl:
+            c = dict(tpl)
+            if c.get("voice") in used:  # a template's own voice may already be taken: swap in a free one of the same gender
+                gender = (by_voice.get(c["voice"]) or {}).get("gender")
+                free = [v for v in voices if v["name"] not in used and v.get("locale") != "characters"]
+                c["voice"] = next((v["name"] for v in free if v.get("gender") == gender), free[0]["name"] if free else c["voice"])
+        else:
+            c = {"name": str(item.get("name", "")).strip()[:40], "role": "guest", "voice": str(item.get("voice", "")).strip(),
+                 "attitude": item.get("attitude") if item.get("attitude") in ATTITUDES else "balanced",
+                 "persona": str(item.get("persona", "")).strip()[:1200], "style": str(item.get("style", "")).strip()[:200],
+                 "speed": _clamp_int(item.get("speed"), -2, 2, 0), "expr": _clamp_int(item.get("expr"), 0, 3, 1),
+                 "length": "", "longest": _snap_longest(item.get("longest"))}
+            # A voice must exist and be free; otherwise take the first free regular voice of the right gender.
+            if c["voice"] not in by_voice or c["voice"] in used:
+                gender = str(item.get("gender", "")).lower()
+                free = [v for v in voices if v["name"] not in used and v.get("locale") != "characters"]
+                c["voice"] = next((v["name"] for v in free if v.get("gender") == gender), free[0]["name"] if free else "")
+        if not c["name"] or not (c.get("persona") or "").strip():
+            continue
+        base, n = c["name"], 2
+        while c["name"].lower() in taken_names:
+            c["name"] = f"{base} {n}"; n += 1
+        taken_names.add(c["name"].lower())
+        used.add(c.get("voice"))
+        c["role"] = "guest"
+        c["id"] = "c" + str(int(time.time() * 1000) + len(made))
+        made.append(c)
+    if not made:
+        raise RuntimeError("The casting director did not come up with anyone usable. Try again, or describe who you want.")
+    if need_host:
+        made[0]["role"] = "host"
+    return {"characters": made, "usage": {"in": raw.get("usage", {}).get("prompt_tokens", 0), "out": raw.get("usage", {}).get("completion_tokens", 0)}}
+
+
+def fake_floor(me, words):
+    base = ("Let me take the long way round, because the short answer hides the interesting part. When I first ran into this, "
+            "nobody could say why it worked, only that it did. The more we looked, the more it came down to habits, not tools. "
+            "People repeat what is easy, so the easy path decides the outcome, whatever the design says. ")
+    out = []
+    while len(" ".join(out).split()) < words:
+        out.append(base)
+    return " ".join(" ".join(out).split()[:words]).rstrip(",;") + "."
 
 
 def fake_line(me, cast, transcript, phase):
