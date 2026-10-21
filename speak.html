@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phonon TTS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236d5dfc'/%3E%3Cg fill='white'%3E%3Crect x='7' y='13' width='3' height='6' rx='1.5'/%3E%3Crect x='12' y='9' width='3' height='14' rx='1.5'/%3E%3Crect x='17' y='6' width='3' height='20' rx='1.5'/%3E%3Crect x='22' y='11' width='3' height='10' rx='1.5'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { display: flex; justify-content: center; align-items: flex-start; padding: 30px 18px 40px; }
+  main { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 16px; }
+  #modelPill { margin-left: 4px; }
+
+  textarea#text {
+    display: block; min-height: 210px; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+    font-size: 17px; line-height: 1.65; padding: 24px 26px 10px; letter-spacing: -.005em;
+  }
+  textarea#text:focus { box-shadow: none; background: transparent; }
+  .meta { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 0 26px 14px; font-size: 12px; color: var(--faint); }
+  .viz { height: 64px; margin: 0 14px; border-radius: 18px; background: rgba(0, 0, 0, .25); border: 1px solid var(--edge); }
+
+  .settings { padding: 18px 20px 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; }
+  .field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .field.row-start { grid-column-start: 1; }
+  .hint { font-size: 12px; color: var(--faint); min-height: 1.2em; }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 20px 16px; }
+  .controls .select-wrap { flex: 1 1 260px; min-width: 0; }
+  #speak { min-width: 124px; }
+  .voice-desc { padding: 0 22px 20px; margin-top: -4px; font-size: 13px; color: var(--muted); min-height: 1.5em; }
+  .status { font-size: 13px; color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; padding: 0 8px; }
+  .status b { color: var(--text); font-weight: 600; }
+
+  @media (max-width: 600px) {
+    body { padding: 16px; }
+    header.top nav.tabs { margin-left: 0; order: 3; width: 100%; }
+    nav.tabs a { flex: 1; text-align: center; }
+    textarea#text { min-height: 170px; padding: 18px; }
+    .meta { padding: 0 18px 12px; }
+    .settings { grid-template-columns: 1fr; padding: 14px 14px 2px; }
+    .controls { padding: 12px 14px 14px; }
+    .controls .select-wrap { flex-basis: 100%; }
+    .controls button.btn { flex: 1; }
+    .pill span.txt { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="white" aria-hidden="true">
+        <rect x="2" y="8" width="2.4" height="4" rx="1.2"/><rect x="6.2" y="5" width="2.4" height="10" rx="1.2"/>
+        <rect x="10.4" y="2" width="2.4" height="16" rx="1.2"/><rect x="14.6" y="6.5" width="2.4" height="7" rx="1.2"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Phonon TTS</h1>
+      <p>Runs entirely on this computer</p>
+    </div>
+    <nav class="tabs"><a href="/">Podcast</a><a href="/speak" class="on">Speak</a></nav>
+    <div class="pill" id="modelPill"><span class="dot busy" id="modelDot"></span><span class="txt" id="modelPillText">Loading…</span></div>
+  </header>
+
+  <section class="card glass">
+    <textarea id="text" spellcheck="true" placeholder="Type or paste something to say…">Hello from Phonon. Type anything here, then press Speak, and I'll start talking while the rest is still being generated.</textarea>
+    <div class="meta"><span id="count"></span><span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> to speak · <kbd>Esc</kbd> to stop</span></div>
+    <div class="viz"><canvas id="viz"></canvas></div>
+
+    <div class="settings">
+      <div class="field" id="modelField">
+        <span class="label">Model</span>
+        <div class="select-wrap"><select id="model" aria-label="Model"></select></div>
+        <span class="hint" id="modelHint"></span>
+      </div>
+      <div class="field" id="langField" hidden>
+        <span class="label">Language</span>
+        <div class="select-wrap"><select id="lang" aria-label="Language"></select></div>
+      </div>
+      <div class="field row-start">
+        <span class="label">Gender</span>
+        <div class="chips" id="genderChips"></div>
+      </div>
+      <div class="field">
+        <span class="label">Accent</span>
+        <div class="chips" id="accentChips"></div>
+      </div>
+      <div class="field row-start">
+        <span class="label">Speed</span>
+        <div class="seg" id="speedSeg"></div>
+      </div>
+      <div class="field">
+        <span class="label">Expressiveness</span>
+        <div class="seg" id="exprSeg"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="select-wrap">
+        <select id="voice" aria-label="Voice"></select>
+      </div>
+      <button class="btn" id="download" title="Generate the whole text and save it as a WAV file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        WAV
+      </button>
+      <button class="btn primary" id="speak"></button>
+    </div>
+    <div class="voice-desc" id="voiceDesc"></div>
+  </section>
+
+  <div class="status" id="status"><span>Ready</span></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const textEl = $("text"), voiceEl = $("voice"), modelEl = $("model"), langEl = $("lang");
+const speakBtn = $("speak"), dlBtn = $("download");
+const statusEl = $("status"), countEl = $("count"), descEl = $("voiceDesc");
+
+const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.52.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5Z"/></svg>';
+const ICON_STOP = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
+const LANG_NAMES = { en: "English", fr: "French", de: "German", es: "Spanish", pt: "Portuguese" };
+const ACCENTS = {
+  "en-us": "American", "en-gb": "British", characters: "Characters",
+  "fr-fr": "France", "de-de": "Germany", "es-es": "Spain", "es-mx": "Mexico", "pt-br": "Brazil", "pt-pt": "Portugal",
+};
+const accentName = (loc) => ACCENTS[loc] || (loc ? loc.toUpperCase() : "Other");
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
+
+// ---- persisted settings ----------------------------------------------------------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("phonon." + k); return v === null ? d : v; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("phonon." + k, v); } catch {} },
+};
+
+let models = [], catalog = [], builtinVoices = ["default"];
+let gender = store.get("gender", "any"), accent = store.get("accent", "any");
+let ctx = null, analyser = null, sources = [], abort = null, playing = false, endTimer = null, modelReady = false;
+
+// ---- model -----------------------------------------------------------------------
+const currentModel = () => models.find((m) => m.id === modelEl.value);
+const currentLang = () => (langEl.value || (currentModel()?.languages[0] ?? "en"));
+
+function setModelPill(state, text) {
+  $("modelDot").className = "dot" + (state === "busy" ? " busy" : state === "err" ? " err" : "");
+  $("modelPillText").textContent = text;
+}
+
+async function loadModels() {
+  models = await fetch("/api/models").then((r) => r.json());
+  modelEl.innerHTML = "";
+  for (const m of models) {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = `${m.name} · ${m.variant}${m.languages.length > 1 ? " · multilingual" : ""}`;
+    modelEl.appendChild(o);
+  }
+  const saved = store.get("model", "");
+  if (models.some((m) => m.id === saved)) modelEl.value = saved;
+  onModelChange(false);
+}
+
+function onModelChange(save = true) {
+  const m = currentModel();
+  if (!m) return;
+  if (save) store.set("model", m.id);
+  // Language picker only for models that speak more than one language.
+  langEl.innerHTML = "";
+  for (const l of m.languages) {
+    const o = document.createElement("option");
+    o.value = l; o.textContent = LANG_NAMES[l] || l;
+    langEl.appendChild(o);
+  }
+  const savedLang = store.get("lang", "en");
+  if (m.languages.includes(savedLang)) langEl.value = savedLang;
+  $("langField").hidden = m.languages.length < 2;
+  $("modelHint").textContent = m.note || (m.local ? (m.variant === "4-bit" ? "Smaller file; slower than 8-bit on desktop CPUs" : "") : "");
+  loadModel();
+}
+
+async function loadModel() {
+  const m = currentModel();
+  if (!m) return;
+  modelReady = false;
+  updateButtons();
+  setModelPill("busy", m.local ? `Loading ${m.name}…` : `Downloading ${m.name}…`);
+  setStatus([m.local ? `Loading <b>${m.name}</b>…` : `Downloading <b>${m.name}</b> from Hugging Face…`]);
+  try {
+    const res = await fetch("/api/load", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: m.id, lang: currentLang() }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    if (currentModel() !== m) return; // switched again meanwhile
+    builtinVoices = data.voices.length ? data.voices : ["default"];
+    if (!m.local) { m.local = true; m.note = ""; $("modelHint").textContent = ""; }
+    modelReady = true;
+    setModelPill("ok", `${m.name} · ${m.variant}` + (m.languages.length > 1 ? ` · ${LANG_NAMES[currentLang()] || currentLang()}` : ""));
+    setStatus([`<b>${m.name}</b> ready`, `loaded in ${data.seconds}s`]);
+  } catch (e) {
+    setModelPill("err", "Model failed to load");
+    setStatus([`Could not load ${m.name}: ${e.message}`]);
+  }
+  renderFilters();
+  updateButtons();
+}
+
+modelEl.addEventListener("change", () => onModelChange(true));
+langEl.addEventListener("change", () => { store.set("lang", langEl.value); renderFilters(); loadModel(); });
+
+// ---- voices ----------------------------------------------------------------------
+async function loadCatalog() {
+  try { catalog = await fetch("/api/voices").then((r) => r.json()); } catch { catalog = []; }
+  renderFilters();
+}
+
+const langVoices = () => catalog.filter((v) => v.language === currentLang());
+const matches = (v, g = gender, a = accent) =>
+  (g === "any" || (v.gender || "unlabelled") === g) && (a === "any" || v.locale === a);
+
+function chip(container, value, label, count, selected, onClick) {
+  const b = document.createElement("button");
+  b.className = "chip"; b.type = "button";
+  b.setAttribute("aria-pressed", String(selected));
+  b.innerHTML = `${label}<span class="n">${count}</span>`;
+  b.disabled = count === 0 && !selected;
+  b.addEventListener("click", () => onClick(value));
+  container.appendChild(b);
+}
+
+function renderFilters() {
+  const vs = langVoices();
+  const genders = [...new Set(vs.map((v) => v.gender || "unlabelled"))].sort();
+  const accents = [...new Set(vs.map((v) => v.locale).filter(Boolean))].sort((a, b) => (a === "characters") - (b === "characters") || a.localeCompare(b));
+  if (gender !== "any" && !genders.includes(gender)) gender = "any";
+  if (accent !== "any" && !accents.includes(accent)) accent = "any";
+
+  const gc = $("genderChips"); gc.innerHTML = "";
+  chip(gc, "any", "Any", vs.filter((v) => matches(v, "any")).length, gender === "any", setGender);
+  for (const g of genders) {
+    if (g === "unlabelled") continue; // character voices have no gender in the catalog
+    chip(gc, g, cap(g), vs.filter((v) => matches(v, g)).length, gender === g, setGender);
+  }
+  const ac = $("accentChips"); ac.innerHTML = "";
+  chip(ac, "any", "Any", vs.filter((v) => matches(v, gender, "any")).length, accent === "any", setAccent);
+  for (const a of accents) chip(ac, a, accentName(a), vs.filter((v) => matches(v, gender, a)).length, accent === a, setAccent);
+
+  renderVoices();
+}
+function setGender(g) { gender = g; store.set("gender", g); renderFilters(); }
+function setAccent(a) { accent = a; store.set("accent", a); renderFilters(); }
+
+function renderVoices() {
+  const prev = voiceEl.value || store.get("voice", "");
+  voiceEl.innerHTML = "";
+  const og1 = document.createElement("optgroup"); og1.label = "Built into the model";
+  for (const name of builtinVoices) {
+    const o = document.createElement("option");
+    o.value = name === "default" ? "" : name;
+    o.textContent = name === "default" ? "Model default" : name;
+    og1.appendChild(o);
+  }
+  voiceEl.appendChild(og1);
+
+  const list = langVoices().filter((v) => matches(v));
+  const groups = {};
+  for (const v of list) (groups[v.locale] ||= []).push(v);
+  for (const loc of Object.keys(groups).sort((a, b) => (a === "characters") - (b === "characters") || a.localeCompare(b))) {
+    const og = document.createElement("optgroup"); og.label = accentName(loc);
+    for (const v of groups[loc]) {
+      const o = document.createElement("option");
+      o.value = v.name;
+      const bits = [cap(v.gender), v.age].filter(Boolean).join(", ");
+      o.textContent = bits ? `${v.name}  —  ${bits}` : v.name;
+      og.appendChild(o);
+    }
+    voiceEl.appendChild(og);
+  }
+  const values = [...voiceEl.options].map((o) => o.value);
+  // With a filter on, land on a matching voice rather than the model's own.
+  const filtered = gender !== "any" || accent !== "any";
+  voiceEl.value = values.includes(prev) && (prev || !filtered || !list.length) ? prev : filtered && list.length ? list[0].name : "";
+  store.set("voice", voiceEl.value);
+  showVoiceDesc();
+}
+
+function showVoiceDesc() {
+  const v = catalog.find((v) => v.name === voiceEl.value);
+  if (!v) { descEl.textContent = "The model's built-in voice."; return; }
+  const tags = [cap(v.gender), v.age, accentName(v.locale)].filter(Boolean).map((t) => `<span class="tag">${t}</span>`).join("");
+  descEl.innerHTML = tags + " " + v.description.replace(/</g, "&lt;");
+}
+voiceEl.addEventListener("change", () => { store.set("voice", voiceEl.value); showVoiceDesc(); });
+
+// ---- UI state -----------------------------------------------------------------------
+function setStatus(parts) { statusEl.innerHTML = parts.map((p) => `<span>${p}</span>`).join(""); }
+function updateButtons() {
+  speakBtn.disabled = !modelReady && !playing;
+  dlBtn.disabled = !modelReady || playing;
+  modelEl.disabled = playing; langEl.disabled = playing;
+}
+function setSpeakButton(state) {
+  speakBtn.classList.toggle("stop", state !== "idle");
+  if (state === "idle") speakBtn.innerHTML = ICON_PLAY + "Speak";
+  else if (state === "loading") speakBtn.innerHTML = '<span class="spinner"></span>Stop';
+  else speakBtn.innerHTML = ICON_STOP + "Stop";
+}
+function updateCount() {
+  const t = textEl.value.trim();
+  const words = t ? t.split(/\s+/).length : 0;
+  countEl.textContent = `${words} words · ${t.length} characters · ~${Math.round(words / 2.6)}s of speech`;
+}
+textEl.addEventListener("input", updateCount);
+
+// ---- delivery ---------------------------------------------------------------------------
+const SPEEDS = [[-2, "Very slow"], [-1, "Slow"], [0, "Normal"], [1, "Fast"], [2, "Very fast"]];
+const EXPRS = [[0, "Calm"], [1, "Natural"], [2, "Lively"], [3, "Dramatic"]];
+let speed = Number(store.get("speed", 0)), expr = Number(store.get("expr", 1));
+function seg(el, options, value, onPick) {
+  el.innerHTML = "";
+  for (const [v, label] of options) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.setAttribute("aria-pressed", String(v === value));
+    b.onclick = () => { onPick(v); seg(el, options, v, onPick); };
+    el.appendChild(b);
+  }
+}
+seg($("speedSeg"), SPEEDS, speed, (v) => { speed = v; store.set("speed", v); });
+seg($("exprSeg"), EXPRS, expr, (v) => { expr = v; store.set("expr", v); });
+
+const requestBody = (text) => JSON.stringify({ text, voice: voiceEl.value, model: modelEl.value, lang: currentLang(), speed, expr });
+
+// ---- streaming playback ---------------------------------------------------------------
+async function speak() {
+  const text = textEl.value.trim();
+  if (!text || !modelReady) return;
+  stop(true);
+
+  if (!ctx) {
+    ctx = new AudioContext({ sampleRate: 24000 });
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.connect(ctx.destination);
+  }
+  await ctx.resume();
+
+  playing = true;
+  setSpeakButton("loading");
+  updateButtons();
+  const isCatalogVoice = catalog.some((v) => v.name === voiceEl.value);
+  setStatus([isCatalogVoice ? "Generating… (a new voice downloads once, the first time)" : "Generating…"]);
+
+  abort = new AbortController();
+  const t0 = performance.now();
+  let firstMs = null, samples = 0, nextTime = 0, leftover = new Uint8Array(0);
+
+  try {
+    const res = await fetch("/api/stream", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: requestBody(text), signal: abort.signal,
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    const rate = Number(res.headers.get("X-Sample-Rate")) || 24000;
+    const reader = res.body.getReader();
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      // Join with bytes left over from the last read, and keep whole float32 samples only.
+      const bytes = new Uint8Array(leftover.length + value.length);
+      bytes.set(leftover); bytes.set(value, leftover.length);
+      const usable = bytes.length - (bytes.length % 4);
+      leftover = bytes.slice(usable);
+      if (!usable) continue;
+      const pcm = new Float32Array(bytes.buffer.slice(0, usable));
+
+      if (firstMs === null) {
+        firstMs = performance.now() - t0;
+        setSpeakButton("playing");
+        nextTime = ctx.currentTime + 0.08; // small cushion against jitter
+      }
+      const buf = ctx.createBuffer(1, pcm.length, rate);
+      buf.copyToChannel(pcm, 0);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(analyser);
+      if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.02;
+      src.start(nextTime);
+      nextTime += buf.duration;
+      sources.push(src);
+      samples += pcm.length;
+
+      const genS = (performance.now() - t0) / 1000;
+      setStatus([
+        `First audio <b>${Math.round(firstMs)} ms</b>`,
+        `Generated <b>${(samples / rate).toFixed(1)}s</b> in ${genS.toFixed(1)}s`,
+        `<b>${(samples / rate / genS).toFixed(1)}×</b> real time`,
+      ]);
+    }
+    if (firstMs === null) throw new Error("no audio came back");
+
+    // Generation is done; wait for playback to finish.
+    const remaining = Math.max(0, nextTime - ctx.currentTime);
+    endTimer = setTimeout(() => finish("Done"), remaining * 1000 + 50);
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    finish(`Error: ${e.message}`, true);
+  }
+}
+
+function finish(msg, replace) {
+  playing = false;
+  clearTimeout(endTimer);
+  sources = [];
+  abort = null;
+  setSpeakButton("idle");
+  updateButtons();
+  const parts = replace ? [] : [...statusEl.querySelectorAll("span")].map((s) => s.innerHTML).filter((p) => /First audio|Generated|real time/.test(p));
+  setStatus([msg, ...parts]);
+}
+
+function stop(silent) {
+  if (abort) abort.abort();
+  for (const s of sources) { try { s.stop(); } catch {} }
+  if (playing && !silent) finish("Stopped");
+  else if (playing) { playing = false; clearTimeout(endTimer); sources = []; }
+}
+
+speakBtn.addEventListener("click", () => (playing ? stop() : speak()));
+
+// ---- download -------------------------------------------------------------------------
+dlBtn.addEventListener("click", async () => {
+  const text = textEl.value.trim();
+  if (!text || !modelReady) return;
+  dlBtn.disabled = true; speakBtn.disabled = true; modelEl.disabled = true;
+  const old = dlBtn.innerHTML;
+  dlBtn.innerHTML = '<span class="spinner light"></span>WAV';
+  setStatus(["Rendering WAV…"]);
+  try {
+    const res = await fetch("/api/wav", { method: "POST", headers: { "Content-Type": "application/json" }, body: requestBody(text) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    const blob = await res.blob();
+    const name = (res.headers.get("Content-Disposition") || "").match(/filename="(.+)"/)?.[1] || "phonon.wav";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    setStatus([`Saved <b>${name}</b>`]);
+  } catch (e) {
+    setStatus([`Error: ${e.message}`]);
+  } finally {
+    dlBtn.innerHTML = old; updateButtons();
+  }
+});
+
+// ---- keyboard -------------------------------------------------------------------------
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); playing ? stop() : speak(); }
+  else if (e.key === "Escape" && playing) stop();
+});
+
+// ---- visualizer -----------------------------------------------------------------------
+const canvas = $("viz"), g = canvas.getContext("2d");
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+
+  const bars = Math.max(24, Math.floor(w / 9));
+  const data = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+  if (data) analyser.getByteFrequencyData(data);
+  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  const bw = w / bars;
+  for (let i = 0; i < bars; i++) {
+    // Mirror the spectrum so the shape sits in the middle.
+    const k = Math.abs(i - bars / 2) / (bars / 2);
+    const bin = data ? data[Math.floor(k * data.length * 0.6)] / 255 : 0;
+    const bh = Math.max(3, bin * (h - 14));
+    g.globalAlpha = playing ? 0.35 + bin * 0.65 : 0.25;
+    const x = i * bw + bw * 0.25, y = (h - bh) / 2;
+    g.beginPath();
+    g.roundRect ? g.roundRect(x, y, bw * 0.5, bh, 2) : g.rect(x, y, bw * 0.5, bh);
+    g.fill();
+  }
+  requestAnimationFrame(draw);
+}
+
+setSpeakButton("idle");
+updateButtons();
+updateCount();
+loadCatalog();
+loadModels();
+requestAnimationFrame(draw);
+textEl.focus();
+</script>
+</body>
+</html>

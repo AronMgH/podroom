@@ -1,0 +1,1564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phonon Podcast</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23cde34a'/%3E%3Cg fill='%2311140a'%3E%3Crect x='7' y='13' width='3' height='6' rx='1.5'/%3E%3Crect x='12' y='9' width='3' height='14' rx='1.5'/%3E%3Crect x='17' y='6' width='3' height='20' rx='1.5'/%3E%3Crect x='22' y='11' width='3' height='10' rx='1.5'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { padding: 22px 22px 30px; }
+  .wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .help { font-size: 12px; color: var(--faint); font-weight: 400; letter-spacing: normal; text-transform: none; }
+  .keyok { color: var(--ok); font-weight: 600; }
+  .row { display: flex; gap: 12px; align-items: end; }
+  .row > * { flex: 1; min-width: 0; }
+  .avatar {
+    width: 38px; height: 38px; border-radius: 50%; flex: none; display: grid; place-items: center;
+    background: radial-gradient(100% 100% at 30% 25%, color-mix(in srgb, var(--c) 55%, #fff), var(--c) 60%);
+    color: #0b0b0d; font-weight: 700; font-size: 15px;
+  }
+
+  /* ---- side panel: one card, three tabs ---------------------------------------------- */
+  .side { position: sticky; top: 18px; display: flex; flex-direction: column; max-height: calc(100vh - 36px); overflow: hidden; }
+  .side-tabs { display: flex; gap: 2px; margin: 14px 14px 0; padding: 4px; border-radius: 999px; background: var(--field); border: 1px solid var(--edge); flex: none; }
+  .side-tabs button {
+    flex: 1; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: transparent; border: 0;
+    border-radius: 999px; padding: 8px 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .side-tabs button:hover { color: var(--text); }
+  .side-tabs button[aria-selected="true"] { background: var(--glass-3); color: var(--text); box-shadow: var(--hi), 0 1px 4px rgba(0, 0, 0, .3); }
+  .side-tabs .count { font-size: 11px; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .pane { padding: 16px 16px 18px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; }
+  .group { display: flex; flex-direction: column; gap: 12px; }
+  .group + .group { padding-top: 14px; border-top: 1px solid var(--edge); }
+  .group-title { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+
+  /* formats */
+  .formats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fmt {
+    text-align: left; font: inherit; color: var(--text); cursor: pointer; padding: 11px 12px; border-radius: 18px;
+    background: rgba(255, 255, 255, .03); border: 1px solid var(--edge); display: flex; flex-direction: column; gap: 8px;
+    transition: background .15s, border-color .15s;
+  }
+  .fmt:hover { background: var(--glass-2); border-color: var(--edge-2); }
+  .fmt:disabled { opacity: .45; cursor: default; }
+  .fmt b { font-size: 13px; font-weight: 600; }
+  .fmt .faces { display: flex; }
+  .fmt .faces .avatar { width: 22px; height: 22px; font-size: 10px; border: 2px solid #121315; margin-right: -6px; }
+  .fmt small { color: var(--faint); font-size: 11px; }
+
+  /* cast list */
+  .cast-list { display: flex; flex-direction: column; gap: 4px; }
+  .crow {
+    display: flex; align-items: center; gap: 11px; padding: 9px 8px 9px 9px; border-radius: 18px; cursor: pointer;
+    border: 1px solid transparent; transition: background .15s, border-color .15s;
+  }
+  .crow:hover { background: var(--glass); border-color: var(--edge); }
+  .crow .info { flex: 1; min-width: 0; }
+  .crow .nm { font-weight: 600; font-size: 14px; display: flex; gap: 7px; align-items: center; }
+  .crow .role { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--c); }
+  .crow .sub { font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crow .acts { display: flex; gap: 2px; opacity: .55; transition: opacity .15s; }
+  .crow:hover .acts { opacity: 1; }
+  .add-row { position: relative; }
+  .add-row > .btn { width: 100%; border-style: dashed; background: transparent; color: var(--muted); }
+  .add-row > .btn:hover { color: var(--text); }
+  .menu {
+    position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 30; max-height: 380px; overflow-y: auto;
+    padding: 8px; border-radius: 20px; background: rgb(18, 19, 21); box-shadow: 0 24px 60px -10px rgba(0, 0, 0, .8), var(--hi);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  .menu h3 { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin: 8px 10px 4px; font-weight: 600; }
+  .menu button.item {
+    width: 100%; text-align: left; font: inherit; color: var(--text); background: transparent; border: 0; border-radius: 12px;
+    padding: 7px 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;
+  }
+  .menu button.item:hover { background: var(--glass-2); }
+  .menu .item .avatar { width: 28px; height: 28px; font-size: 12px; }
+  .menu .item small { display: block; color: var(--faint); font-size: 12px; }
+  .menu .item .x { margin-left: auto; color: var(--faint); padding: 2px 6px; border-radius: 8px; }
+  .menu .item .x:hover { color: var(--danger); background: rgba(255, 107, 107, .1); }
+
+  /* ---- character editor dialog --------------------------------------------------------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px;
+    background: rgba(4, 4, 6, .66); /* plain dim: a backdrop blur here ghosts the page through the dialog */
+    animation: fade .15s ease;
+  }
+  @keyframes fade { from { opacity: 0; } }
+  .dialog {
+    width: min(620px, 100%); max-height: calc(100vh - 40px); display: flex; flex-direction: column; overflow: hidden;
+    background: linear-gradient(180deg, rgb(32, 33, 36), rgb(21, 22, 24));
+    /* No blur of its own: a blurred panel on a blurred overlay renders as a ghosted double image. */
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    animation: pop .18s ease;
+  }
+  @keyframes pop { from { transform: translateY(8px) scale(.98); opacity: 0; } }
+  .dialog .dh { display: flex; align-items: center; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid var(--edge);
+    background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--c) 16%, transparent), transparent 55%); }
+  .dialog .dh .avatar { width: 46px; height: 46px; font-size: 18px; box-shadow: 0 0 26px color-mix(in srgb, var(--c) 45%, transparent); }
+  .dialog .dh input { font-size: 17px; font-weight: 600; }
+  .dialog .dh select { width: auto; flex: none; }
+  .dialog .db { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+  .dialog .df { display: flex; gap: 8px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--edge); }
+  .dialog .df .sp { flex: 1; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .voice-row { display: flex; gap: 8px; }
+  .voice-row select { flex: 1; }
+  .sample-out { font-size: 13px; color: var(--muted); font-style: italic; border-left: 2px solid var(--c); padding: 2px 0 2px 10px; }
+
+  /* ---- studio ------------------------------------------------------------------------------ */
+  .studio { position: sticky; top: 18px; display: flex; flex-direction: column; overflow: hidden; }
+  .now { padding: 18px 20px 0; display: flex; align-items: flex-start; gap: 14px; }
+  .now .t { flex: 1; min-width: 0; }
+  .now h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now p { margin: 2px 0 0; font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .now .faces { display: flex; padding: 4px 0 0 8px; }
+  .now .faces .avatar { width: 30px; height: 30px; font-size: 12px; border: 2px solid #141517; margin-left: -8px; }
+  .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 20px; }
+  .bar .meta { margin-left: auto; display: flex; gap: 16px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .bar .meta b { color: var(--text); font-weight: 600; }
+  .live {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--faint);
+    padding: 6px 11px; border-radius: 999px; border: 1px solid var(--edge); background: var(--glass);
+  }
+  .live .d { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+  .live.on { color: #ff8a8a; border-color: rgba(255, 107, 107, .35); background: rgba(255, 107, 107, .08); }
+  .live.on .d { background: var(--danger); box-shadow: 0 0 10px var(--danger); animation: pulse 1.2s ease-in-out infinite; }
+  .live.paused { color: var(--warn); }
+  .live.paused .d { background: var(--warn); }
+  .viz { height: 64px; margin: 0 16px; border-radius: 18px; background: rgba(0, 0, 0, .28); border: 1px solid var(--edge); flex: none; }
+
+  /* orb view */
+  .stage { height: calc(100vh - 330px); min-height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 4px 24px 16px; overflow: hidden; }
+  .stage canvas { width: min(230px, 30vh); height: min(230px, 30vh); flex: none; }
+  .cap { text-align: center; width: 100%; max-width: 680px; }
+  .cap-who { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--c, var(--faint)); margin-bottom: 8px; min-height: 18px; }
+  .cap-who .think { color: var(--faint); font-weight: 600; letter-spacing: .04em; text-transform: none; }
+  /* one line of subtitles at a time */
+  .cap-line { font-size: 18px; line-height: 1.5; height: 1.5em; letter-spacing: -.01em; color: rgba(243, 243, 239, .3);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cap-line .w { transition: color .12s; }
+  .cap-line .w.on { color: var(--text); }
+  .cap-line.idle { font-size: 15px; color: var(--muted); }
+  .cap-line.idle b { color: var(--text); font-weight: 600; margin-right: 6px; }
+  .seats { display: flex; gap: 10px; }
+  .seats .avatar { width: 34px; height: 34px; font-size: 13px; opacity: .4; transition: opacity .25s, transform .25s, box-shadow .25s; }
+  .seats .avatar svg { width: 15px; height: 15px; }
+  .seats .avatar.next { opacity: .75; }
+  .seats .avatar.on { opacity: 1; transform: scale(1.18); box-shadow: 0 0 20px var(--c); }
+  .transcript { min-height: 260px; height: calc(100vh - 390px); overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
+  .empty { margin: auto; text-align: center; color: var(--muted); max-width: 380px; }
+  .empty .orb {
+    width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 16px;
+    background: radial-gradient(60% 60% at 35% 30%, rgba(255, 255, 255, .5), transparent 60%),
+      radial-gradient(80% 80% at 50% 80%, rgba(205, 227, 74, .55), rgba(72, 92, 168, .35) 70%, transparent);
+    border: 1px solid var(--edge-2); box-shadow: 0 0 60px rgba(205, 227, 74, .2), inset 0 0 20px rgba(255, 255, 255, .15);
+  }
+  .empty b { color: var(--text); display: block; font-size: 16px; margin-bottom: 4px; font-weight: 600; }
+  .turn { display: flex; gap: 11px; align-items: flex-start; }
+  .turn .avatar { width: 32px; height: 32px; font-size: 13px; margin-top: 2px; }
+  .bubble {
+    position: relative; overflow: hidden; max-width: 680px; padding: 9px 14px 11px; border-radius: 6px 20px 20px 20px;
+    background: rgba(255, 255, 255, .05); border: 1px solid var(--edge); box-shadow: var(--hi);
+    transition: border-color .25s, box-shadow .25s, background .25s;
+  }
+  .bubble .who { font-size: 12px; font-weight: 700; color: var(--c); display: flex; gap: 8px; align-items: center; }
+  .bubble .who .tagx { font-weight: 500; color: var(--faint); }
+  .bubble .txt { font-size: 15px; line-height: 1.6; color: rgba(243, 243, 239, .92); }
+  .bubble .prog { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--c); box-shadow: 0 0 8px var(--c); }
+  .turn.queued { opacity: .42; }
+  .turn.speaking .bubble {
+    border-color: color-mix(in srgb, var(--c) 55%, transparent);
+    background: color-mix(in srgb, var(--c) 8%, rgba(255, 255, 255, .05));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 12%, transparent), 0 10px 40px -10px color-mix(in srgb, var(--c) 45%, transparent);
+  }
+  .turn.thinking .txt { color: var(--faint); font-style: italic; }
+  .typing { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 4px; }
+  .typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
+  .typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .note { align-self: center; font-size: 12px; color: var(--muted); background: var(--glass); border: 1px dashed var(--edge-2); border-radius: 999px; padding: 5px 14px; max-width: 90%; }
+
+  .steer { display: flex; gap: 8px; padding: 0 18px; }
+  .steer input { border-radius: 999px; padding-left: 16px; }
+  .crow.me .role { color: var(--text); }
+  .crow.me .avatar svg { width: 16px; height: 16px; }
+  .foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px 18px 18px; }
+  .foot .status { color: var(--muted); font-size: 13px; margin-right: auto; }
+  .foot .status.err { color: var(--danger); }
+  .banner {
+    display: flex; gap: 10px; align-items: center; margin: 0 18px 12px; padding: 10px 14px; border-radius: 16px; font-size: 13px;
+    background: rgba(245, 184, 74, .08); border: 1px solid rgba(245, 184, 74, .3); color: #f7d08a;
+  }
+  .banner a { color: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; }
+
+  @media (max-width: 980px) {
+    .grid { grid-template-columns: 1fr; }
+    .side, .studio { position: static; max-height: none; }
+    .studio { order: -1; }
+    .transcript { height: 56vh; }
+    .stage { height: auto; min-height: 0; padding: 18px 16px; }
+  }
+  @media (max-width: 560px) {
+    body { padding: 14px 16px 24px; }
+    header.top nav.tabs { margin-left: 0; width: 100%; }
+    nav.tabs a { flex: 1; text-align: center; }
+    .bar .meta { margin-left: 0; width: 100%; }
+    .grid2, .formats { grid-template-columns: 1fr; }
+    .dialog .dh { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="2" y="8" width="2.4" height="4" rx="1.2"/><rect x="6.2" y="5" width="2.4" height="10" rx="1.2"/>
+        <rect x="10.4" y="2" width="2.4" height="16" rx="1.2"/><rect x="14.6" y="6.5" width="2.4" height="7" rx="1.2"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Phonon Podcast</h1>
+      <p>AI characters talk it out · voices run on this computer</p>
+    </div>
+    <nav class="tabs"><a href="/" class="on">Podcast</a><a href="/speak">Speak</a></nav>
+  </header>
+
+  <div class="grid">
+    <!-- side panel -->
+    <aside class="card side">
+      <div class="side-tabs" role="tablist">
+        <button role="tab" data-tab="episode">Episode</button>
+        <button role="tab" data-tab="cast">Cast <span class="count" id="castCount">0</span></button>
+        <button role="tab" data-tab="settings">Settings</button>
+      </div>
+
+      <div class="pane" data-pane="episode">
+        <div class="group">
+          <label class="f">Show name<input type="text" id="show" maxlength="80"></label>
+          <label class="f">Topic<textarea id="topic" rows="5" maxlength="1500" placeholder="What should they discuss? Add angles, facts or questions to cover."></textarea></label>
+        </div>
+        <div class="group">
+          <span class="group-title">Start from a format</span>
+          <div class="formats" id="formats"></div>
+          <span class="help">A format sets the show name, topic, cast and settings. You can change everything afterwards.</span>
+        </div>
+      </div>
+
+      <div class="pane" data-pane="cast" hidden>
+        <div class="cast-list" id="cast"></div>
+        <div class="add-row">
+          <button class="btn" id="addChar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add character
+          </button>
+          <div class="menu glass" id="addMenu" hidden></div>
+        </div>
+        <span class="help">Click a character to edit their voice, attitude, speed and personality.</span>
+      </div>
+
+      <div class="pane" data-pane="settings" hidden>
+        <div class="group">
+          <span class="group-title">Conversation</span>
+          <div class="row">
+            <label class="f">Length (minutes)<input type="number" id="minutes" min="1" max="120"></label>
+            <label class="f">Turn-taking
+              <select id="turnMode">
+                <option value="smart">Smart: an AI director decides</option>
+                <option value="natural">Simple: whoever was asked</option>
+                <option value="roundrobin">Round robin</option>
+              </select>
+            </label>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Default reply length</span><div class="seg" id="lengthSeg"></div></div>
+          <label class="f">Creativity <span class="help" id="tempVal"></span><input type="range" id="temperature" min="0.2" max="1.6" step="0.1"></label>
+          <label class="f">Pause between speakers <span class="help" id="gapVal"></span><input type="range" id="gap" min="0" max="1.5" step="0.05"></label>
+          <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Interruptions</span><div class="seg" id="intSeg"></div></div>
+          <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Listener reactions (“mm-hm”, “yeah”)</span><div class="seg" id="reactSeg"></div></div>
+          <label class="f">AI calls per minute <span class="help">Lower this if your provider says “too many requests”.</span><input type="number" id="rpm" min="2" max="60"></label>
+        </div>
+        <div class="group">
+          <span class="group-title">AI</span>
+          <div class="row">
+            <label class="f">Provider<select id="provider"></select></label>
+            <label class="f">Model<select id="llmModel"></select></label>
+          </div>
+          <label class="f"><span><span id="keyLabel">API key</span> <span class="help" id="keyState"></span></span>
+            <div class="row" style="align-items:center">
+              <input type="password" id="apiKey" autocomplete="off" spellcheck="false">
+              <button class="btn" id="saveKey" style="flex:none">Save</button>
+              <button class="btn ghost danger" id="removeKey" style="flex:none" hidden>Remove</button>
+            </div>
+            <span class="help" id="keyHelp"></span>
+          </label>
+        </div>
+        <div class="group">
+          <span class="group-title">Voices</span>
+          <label class="f">Voice model<select id="ttsModel"></select></label>
+        </div>
+      </div>
+    </aside>
+
+    <!-- studio -->
+    <section class="card studio">
+      <div class="now">
+        <div class="t"><h2 id="nowShow"></h2><p id="nowTopic"></p></div>
+        <div class="faces" id="nowFaces"></div>
+        <div class="seg" id="viewSeg" style="flex:none;width:150px"></div>
+      </div>
+      <div class="bar">
+        <button class="btn primary" id="startBtn"></button>
+        <button class="btn" id="pauseBtn" disabled></button>
+        <button class="btn" id="stopBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop
+        </button>
+        <span class="live" id="live"><span class="d"></span><span id="liveText">OFF AIR</span></span>
+        <div class="meta"><span><b id="clock">0:00</b> / <span id="turnMax">10:00</span></span><span>Lines <b id="turnNo">0</b></span></div>
+      </div>
+      <div class="banner" id="keyBanner" hidden>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+        <span id="bannerText"></span>
+      </div>
+      <div class="stage" id="stage">
+        <canvas id="orb"></canvas>
+        <div class="cap">
+          <div class="cap-who" id="capWho"></div>
+          <div class="cap-line" id="capLine"></div>
+        </div>
+        <div class="seats" id="seats"></div>
+      </div>
+      <div class="viz" id="vizWrap" hidden><canvas id="viz"></canvas></div>
+      <div class="transcript" id="transcript" hidden>
+        <div class="empty"><div class="orb"></div><b>Ready when you are</b>Pick a format or build your cast, set a topic and press Start. Each character is its own AI, and they decide among themselves who speaks next.</div>
+      </div>
+      <div class="steer">
+        <div class="seg" id="micMode" style="flex:none;width:172px"></div>
+        <input type="text" id="noteInput" maxlength="400" disabled>
+        <button class="btn" id="noteBtn" disabled>Send</button>
+      </div>
+      <div class="foot">
+        <span class="status" id="status"></span>
+        <button class="btn" id="dlWav" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>Episode WAV
+        </button>
+        <button class="btn" id="dlTxt" disabled>Transcript</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="overlay" id="editor" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const COLORS = ["#cde34a", "#ff7a7a", "#4fd1c5", "#f5a623", "#8fa5ff", "#f472b6", "#b794f6", "#5ec8ff"];
+const ACCENTS = { "en-us": "American", "en-gb": "British", characters: "Characters" };
+const LENGTHS = [["short", "Short"], ["medium", "Medium"], ["long", "Long"]];
+const SPEEDS = [[-2, "Very slow"], [-1, "Slow"], [0, "Normal"], [1, "Fast"], [2, "Very fast"]];
+const EXPRS = [[0, "Calm"], [1, "Natural"], [2, "Lively"], [3, "Dramatic"]];
+const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.52.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5Z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>';
+const ICON_SPARK = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9L12 2.5Zm6.5 12l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9.9-2.6Z"/></svg>';
+const ICON_SAVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4V3Z"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const post = (url, body, signal) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+const store = {
+  get(k, d) { try { return localStorage.getItem("phonon.pod." + k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("phonon.pod." + k, v); } catch {} },
+};
+
+let state = null, status = null, catalog = [], ttsModels = [];
+
+// ===== state & saving ======================================================================
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => post("/api/podcast/state", state).catch(() => {}), 500);
+  renderNow();
+}
+const cast = () => state.characters.filter((c) => c.name.trim());
+// You, the producer. You join on air from the studio box and are never one of the AI characters.
+const PRODUCER_COLOR = "#ecece4";
+const ICON_MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const producer = () => (state.producer ||= { name: "Producer", voice: "", speed: 0, expr: 1 });
+const isProducer = (name) => name === producer().name;
+const colorOf = (name) => {
+  if (isProducer(name)) return PRODUCER_COLOR;
+  const i = state.characters.findIndex((c) => c.name === name);
+  return COLORS[(i < 0 ? 0 : i) % COLORS.length];
+};
+function normalize(c) {
+  return { id: c.id || "c" + Math.random().toString(36).slice(2, 9), name: c.name || "", role: c.role || "guest", voice: c.voice || "",
+    attitude: c.attitude || "balanced", persona: c.persona || "", style: c.style || "",
+    speed: Number.isInteger(c.speed) ? c.speed : 0, expr: Number.isInteger(c.expr) ? c.expr : 1, length: c.length || "" };
+}
+const attitudeLabel = (id) => status.attitudes.find((a) => a.id === id)?.label || "Balanced";
+const speedLabel = (v) => SPEEDS.find((s) => s[0] === v)?.[1] || "Normal";
+const face = (name, color, extra = "") => `<span class="avatar" style="--c:${color}" ${extra}>${esc((name || "?")[0].toUpperCase())}</span>`;
+
+async function init() {
+  const [st, voices, models] = await Promise.all([
+    fetch("/api/podcast/state").then((r) => r.json()),
+    fetch("/api/voices").then((r) => r.json()).catch(() => []),
+    fetch("/api/models").then((r) => r.json()).catch(() => []),
+  ]);
+  state = st.state; status = st.status;
+  if ((state.settings.routing ?? 0) < 2) { state.settings.turnMode = "smart"; state.settings.routing = 2; save(); } // smart turn-taking is the new default
+  state.characters = state.characters.map(normalize);
+  state.myTemplates = (state.myTemplates || []).map(normalize);
+  catalog = voices.filter((v) => v.language === "en");
+  ttsModels = models.filter((m) => m.languages.includes("en"));
+  if (!ttsModels.some((m) => m.id === state.settings.ttsModel)) state.settings.ttsModel = ttsModels[0]?.id || "";
+  renderEpisode(); renderFormats(); renderCast(); renderSettings(); renderKey(); renderNow(); renderMic(); renderView();
+  selectTab(store.get("tab", "episode"));
+}
+
+// ===== small widgets ===========================================================================
+function seg(el, options, value, onPick) {
+  el.innerHTML = "";
+  for (const [v, label] of options) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.setAttribute("aria-pressed", String(v === value));
+    b.onclick = () => { onPick(v); seg(el, options, v, onPick); };
+    el.appendChild(b);
+  }
+}
+function rangeFill(el) { el.style.setProperty("--p", `${((el.value - el.min) / (el.max - el.min)) * 100}%`); }
+
+function selectTab(name) {
+  for (const b of document.querySelectorAll(".side-tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
+  for (const p of document.querySelectorAll(".pane")) p.hidden = p.dataset.pane !== name;
+  store.set("tab", name);
+}
+for (const b of document.querySelectorAll(".side-tabs button")) b.onclick = () => selectTab(b.dataset.tab);
+
+// ===== studio header ===========================================================================
+function renderNow() {
+  $("nowShow").textContent = state.show || "Untitled show";
+  $("nowTopic").textContent = state.topic || "No topic yet";
+  $("nowFaces").innerHTML = cast().map((c) => face(c.name, colorOf(c.name), `title="${esc(c.name)}"`)).join("");
+  $("castCount").textContent = cast().length;
+  renderSeats();
+}
+
+// ===== episode & formats ========================================================================
+function renderEpisode() {
+  $("show").value = state.show; $("topic").value = state.topic;
+  $("show").oninput = () => { state.show = $("show").value; save(); };
+  $("topic").oninput = () => { state.topic = $("topic").value; save(); };
+}
+
+function renderFormats() {
+  const tpl = (id) => status.characterTemplates.find((t) => t.id === id);
+  $("formats").innerHTML = status.episodeTemplates.map((e) => `
+    <button class="fmt" data-id="${e.id}">
+      <span class="faces">${e.cast.map((id, i) => face(tpl(id)?.name, COLORS[i % COLORS.length])).join("")}</span>
+      <span><b>${esc(e.label)}</b><br><small>${e.cast.length} voices · ${e.settings.minutes} min</small></span>
+    </button>`).join("");
+  for (const b of $("formats").querySelectorAll(".fmt")) b.onclick = () => loadFormat(b.dataset.id);
+}
+function loadFormat(id) {
+  const e = status.episodeTemplates.find((x) => x.id === id);
+  if (!e || show.running) return;
+  if (!confirm(`Load “${e.label}”? This replaces the show name, topic and cast.`)) return;
+  state.show = e.show; state.topic = e.topic;
+  state.characters = e.cast.map((tid, i) => normalize({ ...status.characterTemplates.find((t) => t.id === tid), id: `c${Date.now()}${i}` }));
+  Object.assign(state.settings, e.settings);
+  save(); renderEpisode(); renderCast(); renderSettings();
+  setStatus(`Loaded the ${e.label} format. Edit anything, then press Start.`);
+}
+
+// ===== settings & keys ============================================================================
+function renderSettings() {
+  const s = state.settings;
+  s.minutes ||= 10;
+  const showTarget = () => ($("turnMax").textContent = `${s.minutes}:00`);
+  $("minutes").value = s.minutes; showTarget();
+  $("minutes").oninput = () => { s.minutes = Math.max(1, Math.min(120, parseInt($("minutes").value) || 10)); showTarget(); save(); };
+  $("turnMode").value = s.turnMode; $("turnMode").onchange = () => { s.turnMode = $("turnMode").value; save(); };
+  seg($("lengthSeg"), LENGTHS, s.length, (v) => { s.length = v; save(); });
+  const tempLabel = () => ($("tempVal").textContent = `${s.temperature.toFixed(1)} · ${s.temperature < .7 ? "focused" : s.temperature < 1.2 ? "balanced" : "wild"}`);
+  $("temperature").value = s.temperature; tempLabel(); rangeFill($("temperature"));
+  $("temperature").oninput = () => { s.temperature = parseFloat($("temperature").value); tempLabel(); rangeFill($("temperature")); save(); };
+  $("gap").value = s.gap; $("gapVal").textContent = `${s.gap.toFixed(2)}s`; rangeFill($("gap"));
+  $("gap").oninput = () => { s.gap = parseFloat($("gap").value); $("gapVal").textContent = `${s.gap.toFixed(2)}s`; rangeFill($("gap")); save(); };
+  seg($("intSeg"), [[0, "Off"], [1, "Some"], [2, "Lots"]], s.interrupts ?? 1, (v) => { s.interrupts = v; save(); });
+  seg($("reactSeg"), [[0, "Off"], [1, "On"]], s.reactions ?? 1, (v) => { s.reactions = v; save(); });
+  $("rpm").value = s.rpm ?? 10;
+  $("rpm").oninput = () => { s.rpm = Math.max(2, Math.min(60, parseInt($("rpm").value) || 10)); save(); };
+  $("provider").innerHTML = status.providers.map((p) => `<option value="${p.id}">${esc(p.label)}</option>`).join("");
+  if (!status.providers.some((p) => p.id === s.provider)) s.provider = status.providers[0].id;
+  $("provider").value = s.provider;
+  $("provider").onchange = () => { s.provider = $("provider").value; save(); renderSettings(); renderKey(); };
+  const models = prov().models;
+  $("llmModel").innerHTML = models.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join("");
+  if (!models.some((m) => m.id === s.llmModel)) s.llmModel = models[0].id;
+  $("llmModel").value = s.llmModel;
+  $("llmModel").onchange = () => { s.llmModel = $("llmModel").value; save(); };
+  $("ttsModel").innerHTML = ttsModels.map((m) => `<option value="${m.id}">${esc(m.name)} · ${m.variant}</option>`).join("");
+  $("ttsModel").value = s.ttsModel; $("ttsModel").onchange = () => { s.ttsModel = $("ttsModel").value; save(); };
+}
+
+// The selected AI provider, and whether its key is saved.
+const prov = () => status.providers.find((p) => p.id === state.settings.provider) || status.providers[0];
+const keyOk = () => !!prov()?.keyConfigured;
+
+function renderKey() {
+  const p = prov(), ok = keyOk();
+  $("keyLabel").textContent = `${p.label} API key`;
+  $("keyState").innerHTML = status.fake ? '<span class="keyok">Test mode: canned lines, no API calls</span>' : ok ? '<span class="keyok">✓ Key saved</span>' : "Not set";
+  $("removeKey").hidden = !ok || status.fake;
+  $("apiKey").placeholder = ok ? "Paste a new key to replace it" : p.keyHint;
+  $("keyHelp").textContent = `Stored only on this computer, in ${p.keyFile}. It is never shown again.`;
+  $("bannerText").innerHTML = `Add your ${esc(p.label)} API key in <a id="toSettings">Settings</a> to start an episode.`;
+  $("toSettings").onclick = () => { selectTab("settings"); $("apiKey").focus(); };
+  $("keyBanner").hidden = ok;
+  setControls();
+}
+async function setKey(key) {
+  const res = await post("/api/podcast/key", { provider: prov().id, key }).then((r) => r.json());
+  status = { ...status, providers: res.providers };
+  renderKey();
+}
+$("saveKey").onclick = async () => {
+  const key = $("apiKey").value.trim();
+  if (!key) return;
+  $("apiKey").value = "";
+  await setKey(key);
+};
+$("removeKey").onclick = () => setKey("");
+
+// ===== cast list ================================================================================
+function voiceOptions(selected) {
+  const groups = {};
+  for (const v of catalog) {
+    const g = v.locale === "characters" ? "Characters" : `${cap(v.gender) || "Other"} · ${ACCENTS[v.locale] || v.locale}`;
+    (groups[g] ||= []).push(v);
+  }
+  const order = Object.keys(groups).sort((a, b) => (a === "Characters") - (b === "Characters") || a.localeCompare(b));
+  let html = `<option value=""${selected ? "" : " selected"}>Model default voice</option>`;
+  for (const g of order) {
+    html += `<optgroup label="${g}">` + groups[g].map((v) =>
+      `<option value="${esc(v.name)}"${v.name === selected ? " selected" : ""} title="${esc(v.description)}">${esc(v.name)}${v.age ? " — " + esc(v.age) : ""}</option>`).join("") + "</optgroup>";
+  }
+  return html;
+}
+const attitudeOptions = (sel) => status.attitudes.map((a) => `<option value="${a.id}"${a.id === sel ? " selected" : ""}>${esc(a.label)}</option>`).join("");
+const lengthOptions = (sel) => [["", "Episode default"], ...LENGTHS].map(([v, l]) => `<option value="${v}"${v === sel ? " selected" : ""}>${l}</option>`).join("");
+
+function uniqueName(name) {
+  const taken = new Set(state.characters.map((c) => c.name.toLowerCase()));
+  if (!taken.has(name.toLowerCase())) return name;
+  for (let i = 2; ; i++) if (!taken.has(`${name} ${i}`.toLowerCase())) return `${name} ${i}`;
+}
+
+function renderCast() {
+  const box = $("cast"); box.innerHTML = "";
+  const me = producer();
+  const meRow = document.createElement("div");
+  meRow.className = "crow me"; meRow.style.setProperty("--c", PRODUCER_COLOR);
+  meRow.innerHTML = `<span class="avatar" style="--c:${PRODUCER_COLOR}">${ICON_MIC}</span>
+    <div class="info"><div class="nm">${esc(me.name)}<span class="role">You · Producer</span></div>
+    <div class="sub">${esc(["Joins on air from the studio box", me.voice || "Default voice", me.speed ? speedLabel(me.speed) : ""].filter(Boolean).join(" · "))}</div></div>
+    <div class="acts"><button class="btn ghost icon preview" title="Hear your voice">${ICON_PLAY}</button></div>`;
+  meRow.onclick = (e) => { if (!e.target.closest("button")) openProducerEditor(); };
+  meRow.querySelector(".preview").onclick = (e) => previewVoice(me, e.currentTarget);
+  box.appendChild(meRow);
+  state.characters.forEach((c, i) => {
+    const color = COLORS[i % COLORS.length];
+    const row = document.createElement("div");
+    row.className = "crow"; row.style.setProperty("--c", color);
+    const bits = [attitudeLabel(c.attitude), c.voice || "Default voice", c.speed ? speedLabel(c.speed) : ""].filter(Boolean);
+    row.innerHTML = `${face(c.name, color)}
+      <div class="info"><div class="nm">${esc(c.name || "Unnamed")}<span class="role">${cap(c.role)}</span></div><div class="sub">${esc(bits.join(" · "))}</div></div>
+      <div class="acts">
+        <button class="btn ghost icon preview" title="Hear this voice">${ICON_PLAY}</button>
+        <button class="btn ghost icon sample" title="Hear an AI-written line in character">${ICON_SPARK}</button>
+      </div>`;
+    row.onclick = (e) => { if (!e.target.closest("button")) openEditor(i); };
+    row.querySelector(".preview").onclick = (e) => previewVoice(c, e.currentTarget);
+    row.querySelector(".sample").onclick = (e) => sampleLine(c, e.currentTarget, null);
+    box.appendChild(row);
+  });
+  renderNow();
+  setControls();
+}
+
+// ===== character editor ==========================================================================
+function openEditor(i) {
+  const c = state.characters[i];
+  if (!c) return;
+  const color = COLORS[i % COLORS.length];
+  const ov = $("editor");
+  ov.innerHTML = `
+    <div class="dialog glass" role="dialog" aria-modal="true" aria-label="Edit character" style="--c:${color}">
+      <div class="dh">
+        ${face(c.name, color, 'id="edAvatar"')}
+        <input type="text" class="name" maxlength="40" placeholder="Name" value="${esc(c.name)}">
+        <select class="role"><option value="host">Host</option><option value="guest">Guest</option></select>
+      </div>
+      <div class="db">
+        <label class="f">Voice
+          <div class="voice-row">
+            <select class="voice">${voiceOptions(c.voice)}</select>
+            <button class="btn icon preview" title="Hear this voice">${ICON_PLAY}</button>
+            <button class="btn sample" title="Hear an AI-written line in character">${ICON_SPARK}Sample</button>
+          </div>
+        </label>
+        <div class="sample-out" hidden></div>
+        <div class="grid2">
+          <label class="f">Attitude<select class="attitude">${attitudeOptions(c.attitude)}</select></label>
+          <label class="f">Talkativeness<select class="length">${lengthOptions(c.length)}</select></label>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Speed</span><div class="seg speed"></div></div>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Expressiveness</span><div class="seg expr"></div></div>
+        <label class="f">Personality &amp; background<textarea class="persona" rows="4" maxlength="1200" placeholder="Who are they? What do they believe, know, care about?">${esc(c.persona)}</textarea></label>
+        <label class="f">Speaking style<input type="text" class="style" maxlength="200" placeholder="e.g. fast, sarcastic, uses sports metaphors" value="${esc(c.style)}"></label>
+      </div>
+      <div class="df">
+        <button class="btn ghost danger rm">${ICON_TRASH}Remove</button>
+        <button class="btn ghost tpl">${ICON_SAVE}Save as template</button>
+        <span class="sp"></span>
+        <button class="btn primary done">Done</button>
+      </div>
+    </div>`;
+  const q = (s) => ov.querySelector(s);
+  q(".role").value = c.role;
+  const changed = () => { save(); renderCast(); };
+  q(".name").oninput = (e) => { c.name = e.target.value; $("edAvatar").textContent = (c.name || "?")[0].toUpperCase(); changed(); };
+  q(".role").onchange = (e) => { c.role = e.target.value; changed(); };
+  q(".voice").onchange = (e) => { c.voice = e.target.value; changed(); };
+  q(".attitude").onchange = (e) => { c.attitude = e.target.value; changed(); };
+  q(".length").onchange = (e) => { c.length = e.target.value; changed(); };
+  q(".persona").oninput = (e) => { c.persona = e.target.value; save(); };
+  q(".style").oninput = (e) => { c.style = e.target.value; save(); };
+  seg(q(".speed"), SPEEDS, c.speed, (v) => { c.speed = v; changed(); });
+  seg(q(".expr"), EXPRS, c.expr, (v) => { c.expr = v; changed(); });
+  q(".preview").onclick = (e) => previewVoice(c, e.currentTarget);
+  q(".sample").onclick = (e) => sampleLine(c, e.currentTarget, q(".sample-out"));
+  q(".rm").disabled = show.running;
+  q(".rm").onclick = () => {
+    if (state.characters.length <= 2) return setStatus("A show needs at least two characters.", true);
+    if (!confirm(`Remove ${c.name || "this character"}?`)) return;
+    state.characters.splice(i, 1); closeEditor(); save(); renderCast();
+  };
+  q(".tpl").onclick = () => {
+    const t = normalize({ ...c, id: "my" + Date.now() });
+    state.myTemplates = state.myTemplates.filter((m) => m.name !== t.name);
+    state.myTemplates.push(t); save();
+    q(".tpl").innerHTML = ICON_SAVE + "Saved";
+  };
+  q(".done").onclick = closeEditor;
+  ov.onclick = (e) => { if (e.target === ov) closeEditor(); };
+  ov.hidden = false;
+  q(".name").focus();
+}
+function openProducerEditor() {
+  const me = producer();
+  const ov = $("editor");
+  ov.innerHTML = `
+    <div class="dialog glass" role="dialog" aria-modal="true" aria-label="Your seat" style="--c:${PRODUCER_COLOR}">
+      <div class="dh">
+        <span class="avatar" style="--c:${PRODUCER_COLOR}">${ICON_MIC}</span>
+        <input type="text" class="name" maxlength="40" placeholder="Your name on the show" value="${esc(me.name)}">
+      </div>
+      <div class="db">
+        <span class="help">Switch the studio box to <b>On air</b> and type: your line is spoken in this voice as part of the episode, and the characters answer you. Your lines do not use AI calls or count towards the turns.</span>
+        <label class="f">Your voice
+          <div class="voice-row">
+            <select class="voice">${voiceOptions(me.voice)}</select>
+            <button class="btn icon preview" title="Hear this voice">${ICON_PLAY}</button>
+          </div>
+        </label>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Speed</span><div class="seg speed"></div></div>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Expressiveness</span><div class="seg expr"></div></div>
+      </div>
+      <div class="df"><span class="sp"></span><button class="btn primary done">Done</button></div>
+    </div>`;
+  const q = (s) => ov.querySelector(s);
+  q(".name").oninput = (e) => {
+    const v = e.target.value.trim();
+    if (v && !state.characters.some((c) => c.name.toLowerCase() === v.toLowerCase())) { me.name = v; save(); renderCast(); }
+  };
+  q(".voice").onchange = (e) => { me.voice = e.target.value; save(); renderCast(); };
+  seg(q(".speed"), SPEEDS, me.speed, (v) => { me.speed = v; save(); renderCast(); });
+  seg(q(".expr"), EXPRS, me.expr, (v) => { me.expr = v; save(); });
+  q(".preview").onclick = (e) => previewVoice(me, e.currentTarget);
+  q(".done").onclick = closeEditor;
+  ov.onclick = (e) => { if (e.target === ov) closeEditor(); };
+  ov.hidden = false;
+  q(".name").focus();
+}
+
+function closeEditor() { $("editor").hidden = true; $("editor").innerHTML = ""; }
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("editor").hidden) closeEditor(); });
+
+// ===== add menu ===================================================================================
+function renderAddMenu() {
+  const m = $("addMenu");
+  const item = (t, i, mine) => `
+    <button class="item" data-kind="${mine ? "mine" : "tpl"}" data-id="${t.id}">
+      ${face(t.name, COLORS[i % COLORS.length])}
+      <span>${esc(t.name)}<small>${esc(attitudeLabel(t.attitude))} · ${cap(t.role)}${t.voice ? " · " + esc(t.voice) : ""}</small></span>
+      ${mine ? '<span class="x" data-del="' + t.id + '" title="Delete template">✕</span>' : ""}
+    </button>`;
+  m.innerHTML = `<button class="item" data-kind="blank">${face("+", COLORS[state.characters.length % COLORS.length])}<span>Blank character<small>Start from scratch</small></span></button>`
+    + (state.myTemplates.length ? "<h3>My templates</h3>" + state.myTemplates.map((t, i) => item(t, i + 3, true)).join("") : "")
+    + "<h3>Templates</h3>" + status.characterTemplates.map((t, i) => item(t, i, false)).join("");
+}
+$("addChar").onclick = (e) => {
+  e.stopPropagation();
+  if (show.running) return;
+  renderAddMenu();
+  $("addMenu").hidden = !$("addMenu").hidden;
+};
+$("addMenu").onclick = (e) => {
+  e.stopPropagation();
+  const del = e.target.closest("[data-del]");
+  if (del) {
+    state.myTemplates = state.myTemplates.filter((t) => t.id !== del.dataset.del);
+    save(); renderAddMenu(); return;
+  }
+  const b = e.target.closest("button.item");
+  if (!b) return;
+  const blank = b.dataset.kind === "blank";
+  const c = blank ? { name: `Guest ${state.characters.length + 1}`, role: "guest" }
+    : (b.dataset.kind === "mine" ? state.myTemplates : status.characterTemplates).find((t) => t.id === b.dataset.id);
+  state.characters.push(normalize({ ...c, id: "c" + Date.now(), name: uniqueName(c.name) }));
+  $("addMenu").hidden = true;
+  save(); renderCast();
+  if (blank) openEditor(state.characters.length - 1);
+};
+document.addEventListener("click", () => ($("addMenu").hidden = true));
+
+// ===== audio ======================================================================================
+let ctx = null, analyser = null;
+async function audio() {
+  if (!ctx) {
+    ctx = new AudioContext({ sampleRate: 24000 });
+    analyser = ctx.createAnalyser(); analyser.fftSize = 256; analyser.connect(ctx.destination);
+  }
+  if (!show.paused) await ctx.resume();
+  return ctx;
+}
+
+// Streams one line in a character's voice and delivery. Calls onChunk(Float32Array, rate) as audio arrives.
+async function streamSpeech(text, who, signal, onChunk) {
+  const res = await post("/api/stream", { text, voice: who.voice, speed: who.speed, expr: who.expr, model: state.settings.ttsModel, lang: "en" }, signal);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "speech failed");
+  const rate = Number(res.headers.get("X-Sample-Rate")) || 24000;
+  const reader = res.body.getReader();
+  let leftover = new Uint8Array(0);
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const bytes = new Uint8Array(leftover.length + value.length);
+    bytes.set(leftover); bytes.set(value, leftover.length);
+    const usable = bytes.length - (bytes.length % 4);
+    leftover = bytes.slice(usable);
+    if (usable) onChunk(new Float32Array(bytes.buffer.slice(0, usable)), rate);
+  }
+}
+
+// Plays a single line outside the show (voice preview and samples).
+let previewing = null;
+async function playOnce(text, who) {
+  if (previewing) previewing.abort();
+  const ac = await audio();
+  const ctl = previewing = new AbortController();
+  let t = ac.currentTime + 0.05;
+  await streamSpeech(text, who, ctl.signal, (pcm, rate) => {
+    const buf = ac.createBuffer(1, pcm.length, rate); buf.copyToChannel(pcm, 0);
+    const src = ac.createBufferSource(); src.buffer = buf; src.connect(analyser);
+    t = Math.max(t, ac.currentTime); src.start(t); t += buf.duration;
+  });
+}
+async function previewVoice(c, btn) {
+  if (show.running) return;
+  btn.disabled = true;
+  try { await playOnce(`Hi, I'm ${c.name || "your new character"}. This is how I sound.`, c); }
+  catch (e) { if (e.name !== "AbortError") setStatus(e.message, true); }
+  btn.disabled = false;
+}
+async function sampleLine(c, btn, out) {
+  if (show.running) return;
+  if (!keyOk()) return setStatus(`Add your ${prov().label} API key in Settings to hear AI samples. The ▶ button plays a fixed line.`, true);
+  if (!c.name.trim()) return setStatus("Give the character a name first.", true);
+  const old = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner light"></span>' + (out ? "Writing" : "");
+  try {
+    const s = state.settings;
+    const res = await post("/api/podcast/sample", {
+      characters: cast(), show: state.show, topic: state.topic, speaker: c.name,
+      length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: sampleSession,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    if (out) { out.hidden = false; out.textContent = `“${data.text}”`; }
+    else setStatus(`${c.name}: “${data.text}”`);
+    await playOnce(data.text, c);
+  } catch (e) { if (e.name !== "AbortError") setStatus(e.message, true); }
+  btn.disabled = false; btn.innerHTML = old;
+}
+
+// ===== the show =====================================================================================
+const sampleSession = crypto.randomUUID();
+const show = { session: null, running: false, paused: false, epoch: 0, turns: [], nextTime: 0, note: null, thinkingEl: null, usage: { in: 0, out: 0 },
+  calls: [], lastCut: -99, ttsBusy: false, clips: {}, wps: {} };
+// Calls-per-minute budget: at most rpm AI calls in any 60 seconds.
+function canCall() {
+  const now = performance.now();
+  show.calls = show.calls.filter((t) => now - t < 60000);
+  return show.calls.length < (state.settings.rpm || 10);
+}
+const alive = (ep) => show.running && ep === show.epoch;
+async function waitUntil(cond) { while (!cond()) await sleep(60); }
+
+function setStatus(msg, err) { $("status").textContent = msg || ""; $("status").className = "status" + (err ? " err" : ""); }
+
+function setControls() {
+  if (!status) return;
+  const r = show.running, ok = keyOk();
+  $("startBtn").innerHTML = ICON_PLAY + (show.turns.length && !r ? "New episode" : "Start");
+  $("startBtn").disabled = r || !ok;
+  $("pauseBtn").innerHTML = show.paused ? ICON_PLAY + "Resume" : ICON_PAUSE + "Pause";
+  $("pauseBtn").disabled = !r;
+  $("stopBtn").disabled = !r;
+  $("noteInput").disabled = $("noteBtn").disabled = !r;
+  const has = show.turns.some((t) => t.pcm.length);
+  $("dlWav").disabled = $("dlTxt").disabled = r || !has;
+  $("live").className = "live" + (r ? (show.paused ? " paused" : " on") : "");
+  $("liveText").textContent = r ? (show.paused ? "PAUSED" : "ON AIR") : "OFF AIR";
+  for (const el of document.querySelectorAll("#cast .sample, #cast .preview, .fmt")) el.disabled = r;
+  $("addChar").disabled = r;
+}
+
+function validate() {
+  const names = cast().map((c) => c.name.trim().toLowerCase());
+  if (names.length < 2) return "Add at least two characters with names.";
+  if (new Set(names).size !== names.length) return "Every character needs a different name.";
+  if (!state.topic.trim()) return "Give them a topic first.";
+  if (names.includes(producer().name.trim().toLowerCase())) return "Your producer name matches a character's. Change one of them.";
+  return null;
+}
+
+async function start() {
+  const err = validate();
+  if (err) return setStatus(err, true);
+  for (const c of state.characters) c.name = c.name.trim();
+  previewing?.abort();
+  // Clear the last episode before any await, so a second click cannot start a second show.
+  show.turns = []; show.nextTime = 0; show.note = null; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99;
+  $("transcript").innerHTML = ""; $("turnNo").textContent = "0"; $("clock").textContent = "0:00"; show.signedOff = false;
+  show.running = true; show.epoch++;
+  show.session = crypto.randomUUID(); // one conversation ID per episode, for providers that route by session
+  newRecord();
+  const ep = show.epoch;
+  setControls();
+  try {
+    await audio();
+    setStatus("Warming up voices…");
+    const voices = [...new Set(cast().map((c) => c.voice))];
+    const load = await post("/api/load", { model: state.settings.ttsModel, lang: "en" });
+    if (!load.ok) throw new Error((await load.json()).error);
+    const warm = await post("/api/warm", { model: state.settings.ttsModel, lang: "en", voices });
+    if (!warm.ok) throw new Error((await warm.json()).error);
+  } catch (e) {
+    return endShow(`Could not prepare voices: ${e.message}`, true);
+  }
+  if (!alive(ep)) return;
+  setStatus("");
+  loop(ep);
+  if (state.settings.reactions) buildReactions(ep);
+}
+
+// ===== reactions ========================================================================================
+// Short "mm-hm" and "yeah" clips in each character's own voice, made once per show in the gaps
+// between lines, then dropped in quietly while someone else is talking. They never call the AI.
+const REACT_LINES = ["Yeah.", "Right.", "Exactly.", "Oh, totally.", "True."];
+async function buildReactions(ep) {
+  for (const c of cast()) {
+    if (show.clips[c.name]) continue;
+    const pick = (a) => a[Math.floor(Math.random() * a.length)];
+    const lines = [pick(REACT_LINES), "Mm-hm."];
+    const clips = [];
+    for (const text of lines) {
+      await waitUntil(() => !alive(ep) || !show.ttsBusy); // lines being spoken come first
+      if (!alive(ep)) return;
+      const parts = [];
+      try { await streamSpeech(text, { ...c, expr: 2 }, undefined, (pcm) => parts.push(pcm)); } catch { continue; }
+      const pcm = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+      let o = 0; for (const p of parts) { pcm.set(p, o); o += p.length; }
+      clips.push({ pcm });
+    }
+    show.clips[c.name] = clips;
+  }
+}
+
+function addReaction(turn) {
+  if (!state.settings.reactions || turn.end - turn.start < 3.5) return;
+  if (Math.random() > 0.55) return;
+  const listeners = cast().filter((c) => c.name !== turn.name && show.clips[c.name]?.length);
+  if (!listeners.length) return;
+  const who = listeners[Math.floor(Math.random() * listeners.length)];
+  const options = show.clips[who.name];
+  const clip = options[Math.floor(Math.random() * options.length)];
+  const latest = (turn.cutAt ?? turn.end) - clip.pcm.length / 24000 - 0.3;
+  const when = turn.start + (turn.end - turn.start) * (0.45 + Math.random() * 0.35);
+  if (when > latest || when < ctx.currentTime + 0.1) return;
+  const buf = ctx.createBuffer(1, clip.pcm.length, 24000); buf.copyToChannel(clip.pcm, 0);
+  const src = ctx.createBufferSource(), gain = ctx.createGain();
+  gain.gain.value = 0.5; src.buffer = buf; src.connect(gain); gain.connect(analyser);
+  src.start(when);
+  turn.reactions.push({ pcm: clip.pcm, when, gain: 0.5, src });
+}
+
+const aiCount = () => show.turns.filter((t) => !t.human).length;
+const mentions = (text, people) => people.some((c) => new RegExp(`\\b${c.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+
+function pickNext(phase, mode = state.settings.turnMode) {
+  const people = cast();
+  const host = people.find((c) => c.role === "host") || people[0];
+  const n = show.turns.length, k = aiCount();
+  if (k === 0 || phase === "close") return host; // the host opens and closes the episode
+  const last = show.turns[n - 1];
+  const others = people.filter((c) => c.name !== last.name);
+  if (mode === "roundrobin") {
+    const lastAI = [...show.turns].reverse().find((t) => !t.human);
+    if (last.human && !mentions(last.text, people)) return host;
+    const i = people.findIndex((c) => c.name === lastAI.name);
+    return people[(i + 1) % people.length];
+  }
+  // Natural: whoever the last speaker addressed near the end of their line.
+  let best = null, bestAt = -1;
+  for (const c of others) {
+    const re = new RegExp(`\\b${c.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi");
+    let m; while ((m = re.exec(last.text))) if (m.index > bestAt) { bestAt = m.index; best = c; }
+  }
+  if (best && (bestAt >= last.text.length * 0.45 || last.human)) return best;
+  if (last.human) return host; // you spoke without naming anyone: the host picks it up
+  // Otherwise whoever has waited longest.
+  const lastSpoke = (c) => { for (let i = n - 1; i >= 0; i--) if (show.turns[i].name === c.name) return i; return -1; };
+  const waited = Math.min(...others.map(lastSpoke));
+  const pool = others.filter((c) => lastSpoke(c) === waited);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// Smart turn-taking: obvious cases are decided here, everything else by an AI director that reads the
+// whole conversation and says who would naturally speak next and what they want to say. If the director
+// is slow, over budget or confused, the simple rule decides instead, so it never holds up the show.
+async function chooseNext(phase, ep) {
+  if (state.settings.turnMode !== "smart") return { speaker: pickNext(phase) };
+  const people = cast();
+  const host = people.find((c) => c.role === "host") || people[0];
+  if (aiCount() === 0 || phase === "close") return { speaker: host };
+  const last = show.turns[show.turns.length - 1];
+  const others = people.filter((c) => c.name !== last.name);
+  if (others.length === 1) return { speaker: others[0] };
+  const named = (text) => others.filter((c) => mentions(text, [c]));
+  if (show.note && named(show.note).length === 1) return { speaker: named(show.note)[0] }; // your note names someone
+  if (last.human) return { speaker: named(last.text).length === 1 ? named(last.text)[0] : host };
+  if (/\?/.test(last.text)) { // asked someone by name near the end of the line
+    const asked = pickNext(phase, "natural");
+    if (mentions(last.text.slice(Math.floor(last.text.length * 0.45)), [asked])) return { speaker: asked };
+  }
+  if (canCall()) {
+    show.calls.push(performance.now());
+    try {
+      const res = await post("/api/podcast/next", {
+        characters: people, show: state.show, topic: state.topic, producer: producer().name, note: show.note,
+        transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })),
+        provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session,
+      }, AbortSignal.timeout(5000));
+      const d = await res.json();
+      const speaker = res.ok && others.find((c) => c.name === d.next);
+      if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
+      if (speaker) return { speaker, intent: d.intent, wantsCut: d.cutIn };
+    } catch {}
+    if (!alive(ep)) return { speaker: host };
+  }
+  return { speaker: pickNext(phase, "natural") };
+}
+
+// Where the episode is: the host opens, and once the audio already queued reaches the chosen length
+// (less a line's worth), the host is told to wrap up. Nobody else knows when that will be.
+function episodePhase() {
+  if (aiCount() === 0) return "open";
+  const first = show.turns.find((t) => t.start !== null);
+  const planned = first ? show.nextTime - first.start : 0;
+  return planned >= (state.settings.minutes || 10) * 60 - 20 ? "close" : "normal";
+}
+
+async function loop(ep) {
+  const s = state.settings;
+  try {
+    while (alive(ep) && !show.signedOff && aiCount() < 400) {
+      // Keep at most one line queued behind the one that is playing, which also makes Pause hold the show.
+      const prev = show.turns[show.turns.length - 1];
+      await waitUntil(() => !alive(ep) || !prev || (prev.start !== null && ctx.currentTime >= prev.start));
+      if (!alive(ep)) return;
+
+      const phase = episodePhase();
+      const { speaker, intent, wantsCut } = await chooseNext(phase, ep);
+      if (!alive(ep)) return;
+      const note = show.note; show.note = null;
+      const cut = phase === "normal" ? planInterruption(prev, speaker, wantsCut) : null;
+      showThinking(speaker);
+      const data = await askAI({
+        characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase, note,
+        transcript: show.turns.map((t) => ({ name: t.name, text: t === prev && cut ? cut.text : t.llmText ?? t.text })),
+        cutIn: cut ? prev.name : null, producer: producer().name, intent,
+        length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
+      }, ep);
+      if (!alive(ep)) return;
+      if (data.usage) { show.usage.in += data.usage.in; show.usage.out += data.usage.out; }
+
+      const turn = { name: speaker.name, who: { ...speaker }, text: data.text, pcm: [], sources: [], reactions: [], gain: null,
+        start: null, end: null, done: false, abort: new AbortController(), el: null, cutsPrev: cut, phase };
+      hideThinking();
+      show.turns.push(turn);
+      turn.entry = logEntry({ type: "line", name: speaker.name, role: speaker.role, phase, text: data.text, cutIn: cut ? prev.name : undefined, note: note || undefined, intent: intent || undefined });
+      renderTurn(turn);
+      await waitUntil(() => !alive(ep) || !prev || prev.done); // never overlap two lines' audio
+      if (!alive(ep)) return;
+      await speakTurn(turn);
+      if (phase === "close") show.signedOff = true;
+    }
+    if (!alive(ep)) return;
+    await waitUntil(() => !alive(ep) || ctx.currentTime >= show.nextTime);
+    if (alive(ep)) endShow("Episode complete. Download it below.");
+  } catch (e) {
+    if (e.name === "AbortError" || !alive(ep)) return;
+    endShow(`Stopped: ${e.message}`, true);
+  }
+}
+
+// Waits out the calls-per-minute budget, then asks for a line. "Too many requests" waits and retries
+// instead of ending the show.
+async function askAI(body, ep) {
+  const waits = [8, 15, 30, 60];
+  for (let attempt = 0; ; attempt++) {
+    await waitUntil(() => !alive(ep) || canCall());
+    if (!alive(ep)) throw Object.assign(new Error("stopped"), { name: "AbortError" });
+    show.calls.push(performance.now());
+    const res = await post("/api/podcast/turn", body);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return data;
+    if (res.status !== 429 || attempt >= waits.length) throw new Error(data.error || "the AI did not answer");
+    let left = Math.ceil(data.retryAfter || waits[attempt]);
+    while (left > 0 && alive(ep)) {
+      setStatus(`${prov().label} says too many requests. Retrying in ${left}s…`, true);
+      await sleep(1000); left--;
+    }
+    setStatus("");
+  }
+}
+
+// Now and then the next speaker cuts in before the last one finishes. Never on the host's opening or on
+// you, and never soon after the last real cut. With the director, only when it says this person can't wait.
+function planInterruption(prev, speaker, wantsCut) {
+  const level = state.settings.interrupts ?? 1;
+  if (!level || !prev || prev.human || prev.phase === "open" || prev.cutAt || prev.cutsPrev) return null;
+  if (show.turns.length - show.lastCut < (level === 2 ? 4 : 7)) return null;
+  const words = prev.text.split(/\s+/);
+  if (words.length < 12) return null;
+  if (state.settings.turnMode === "smart") {
+    if (!wantsCut && !(level === 2 && Math.random() < 0.08)) return null;
+  } else {
+    const temper = ["provocative", "sarcastic", "funny", "dramatic", "grumpy", "enthusiastic"].includes(speaker.attitude) ? 1.5
+      : ["calm", "friendly"].includes(speaker.attitude) ? 0.5 : 1;
+    if (Math.random() > [0, 0.07, 0.15][level] * temper) return null;
+  }
+  const k = Math.max(6, Math.round(words.length * (0.6 + Math.random() * 0.25)));
+  return { frac: k / words.length, text: words.slice(0, k).join(" ").replace(/[,.;:!?]+$/, "") + "—" };
+}
+
+// A natural pause: a little random, and quicker after a question.
+function naturalGap(prev) {
+  const base = state.settings.gap * (prev && /\?\s*$/.test(prev.text) ? 0.7 : 1);
+  return Math.max(0.12, base + (Math.random() - 0.5) * 0.35);
+}
+
+async function speakTurn(turn) {
+  const prev = show.turns[show.turns.indexOf(turn) - 1];
+  let gap = prev ? naturalGap(prev) : 0;
+  // Cutting in: fade the last speaker out partway through and start a beat before they stop.
+  if (turn.cutsPrev && prev && prev.done && prev.gain) {
+    const cutAt = prev.start + (prev.end - prev.start) * turn.cutsPrev.frac;
+    if (cutAt > ctx.currentTime + 0.3) {
+      prev.gain.gain.setValueAtTime(1, cutAt);
+      prev.gain.gain.linearRampToValueAtTime(0, cutAt + 0.15);
+      prev.sources.forEach((src) => { try { src.stop(cutAt + 0.2); } catch {} });
+      prev.cutAt = cutAt; prev.cutText = turn.cutsPrev.text; prev.end = cutAt + 0.15;
+      prev.llmText = prev.cutText; show.lastCut = show.turns.indexOf(turn); // later speakers hear the line as it was cut off
+      if (prev.entry) { prev.entry.cut = prev.cutText; saveRecord(); }
+      prev.reactions = prev.reactions.filter((r) => {
+        if (r.when + r.pcm.length / 24000 < cutAt) return true;
+        try { r.src.stop(); } catch {}
+        return false;
+      });
+      show.nextTime = cutAt - 0.12;
+      gap = 0;
+    }
+  }
+  turn.gain = ctx.createGain(); turn.gain.connect(analyser);
+  show.ttsBusy = true;
+  try {
+    // Only this turn's own abort cancels it: a producer note restarts the loop but must not cut off the line being heard.
+    await streamSpeech(turn.text, turn.who, turn.abort.signal, (pcm, rate) => {
+      if (turn.abort.signal.aborted) return;
+      if (turn.start === null) {
+        turn.start = Math.max(show.nextTime + gap, ctx.currentTime + 0.1);
+        show.nextTime = turn.start;
+      }
+      const buf = ctx.createBuffer(1, pcm.length, rate); buf.copyToChannel(pcm, 0);
+      const src = ctx.createBufferSource(); src.buffer = buf; src.connect(turn.gain);
+      src.start(show.nextTime);
+      show.nextTime += buf.duration;
+      turn.end = show.nextTime;
+      turn.sources.push(src); turn.pcm.push(pcm);
+    });
+  } finally { show.ttsBusy = false; }
+  turn.done = true;
+  if (turn.start === null) { turn.start = turn.end = show.nextTime; } // nothing came back
+  else {
+    addReaction(turn);
+    // Learn this voice's talking speed (words per second) for the captions.
+    const words = turn.text.split(/\s+/).length, secs = turn.end - turn.start;
+    if (words >= 4 && secs > 1) {
+      const w = words / secs, old = show.wps[turn.name];
+      show.wps[turn.name] = old ? old * 0.6 + w * 0.4 : w;
+    }
+  }
+}
+
+// Drops every line that has not started playing yet, so what comes next can react to the box.
+function dropQueued() {
+  const now = ctx.currentTime;
+  const keep = show.turns.filter((t) => t.start !== null && t.start <= now);
+  for (const t of show.turns) if (!keep.includes(t)) {
+    if (t.entry) { t.entry.dropped = true; saveRecord(); }
+    t.abort.abort();
+    [...t.sources, ...t.reactions.map((r) => r.src)].forEach((s) => { try { s.stop(); } catch {} });
+    t.el?.remove();
+  }
+  show.turns = keep;
+  show.nextTime = keep.length ? keep[keep.length - 1].end ?? now : now;
+  hideThinking();
+}
+
+function steer(text) {
+  dropQueued();
+  const note = document.createElement("div");
+  note.className = "note"; note.textContent = `Producer note: ${text}`;
+  $("transcript").appendChild(note); scrollDown();
+  show.note = text;
+  logEntry({ type: "note", name: producer().name, text });
+  show.epoch++;
+  loop(show.epoch);
+}
+
+// You speak on air: your line is voiced like any other and the characters answer it.
+function sayOnAir(text) {
+  dropQueued();
+  const prev = show.turns[show.turns.length - 1];
+  const me = producer();
+  const turn = { name: me.name, who: { ...me }, text, human: true, pcm: [], sources: [], reactions: [], gain: null,
+    start: null, end: null, done: false, abort: new AbortController(), el: null, cutsPrev: null };
+  show.turns.push(turn);
+  turn.entry = logEntry({ type: "onair", name: me.name, role: "producer", text });
+  renderTurn(turn);
+  show.epoch++;
+  const ep = show.epoch;
+  (async () => {
+    try {
+      await waitUntil(() => !show.running || !prev || prev.done);
+      if (show.running && !turn.abort.signal.aborted) await speakTurn(turn);
+    } catch (e) { if (e.name !== "AbortError") setStatus(e.message, true); }
+  })();
+  loop(ep);
+}
+
+let micMode = store.get("mic", "air");
+function renderMic() {
+  seg($("micMode"), [["air", "On air"], ["note", "Note"]], micMode, (v) => { micMode = v; store.set("mic", v); renderMic(); });
+  $("noteInput").placeholder = micMode === "air"
+    ? `Say something on air as ${producer().name}…`
+    : "Producer note: steer the next line, e.g. “Theo, tell a story from your own work”";
+}
+function submitBox() {
+  const text = $("noteInput").value.trim();
+  if (!text || !show.running) return;
+  $("noteInput").value = "";
+  micMode === "air" ? sayOnAir(text) : steer(text);
+}
+
+function togglePause() {
+  if (!show.running) return;
+  show.paused = !show.paused;
+  show.paused ? ctx.suspend() : ctx.resume();
+  setControls();
+}
+
+function stopShow() {
+  if (!show.running) return;
+  for (const t of show.turns) {
+    t.abort.abort();
+    [...t.sources, ...t.reactions.map((r) => r.src)].forEach((s) => { try { s.stop(); } catch {} });
+    t.reactions = t.reactions.filter((r) => r.when <= ctx.currentTime);
+    // Keep only what was actually heard.
+    if (t.start === null || t.start > ctx.currentTime) { t.pcm = []; t.el?.remove(); if (t.entry) t.entry.dropped = true; }
+  }
+  show.turns = show.turns.filter((t) => t.pcm.length);
+  endShow("Stopped.");
+}
+
+function endShow(msg, err) {
+  show.running = false; show.epoch++;
+  if (show.paused) { show.paused = false; ctx?.resume(); }
+  hideThinking();
+  for (const t of show.turns) t.el?.classList.remove("speaking", "queued");
+  const cost = show.usage.in || show.usage.out ? ` · ${show.usage.in + show.usage.out} tokens` : "";
+  setStatus(msg + cost, err);
+  setControls();
+  if (show.record && !show.record.endedAt) {
+    show.record.endedAt = stamp(); show.record.ended = msg;
+    show.record.tokens = show.usage.in + show.usage.out || undefined;
+    saveRecord(true);
+  }
+}
+
+// ===== saved episodes ====================================================================================
+// Every episode is saved on the server as it happens (episodes/ next to the app): each line as it is
+// written, notes, on-air lines, cut-offs, and lines that were dropped before they played.
+function stamp(d = new Date()) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+}
+function newRecord() {
+  const s = state.settings, started = stamp();
+  const slug = (state.show || "episode").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+  show.record = {
+    id: `${started.replace(/[ :]/g, (c) => (c === " " ? "_" : "-"))}_${slug}`, show: state.show, topic: state.topic, startedAt: started,
+    cast: cast().map(({ name, role, voice, attitude, persona, style, speed, expr, length }) => ({ name, role, voice, attitude, persona, style, speed, expr, length })),
+    producer: producer().name,
+    settings: { minutes: s.minutes, turnMode: s.turnMode, length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel,
+      interrupts: s.interrupts, reactions: s.reactions, ttsModel: s.ttsModel },
+    lines: [],
+  };
+  saveRecord(true);
+}
+function logEntry(e) {
+  if (!show.record) return null;
+  const entry = { at: stamp(), ...e };
+  show.record.lines.push(entry);
+  saveRecord();
+  return entry;
+}
+let recordTimer = null, saving = Promise.resolve();
+function saveRecord(now) {
+  clearTimeout(recordTimer);
+  const rec = show.record;
+  recordTimer = setTimeout(() => {
+    // One save at a time, always the latest copy, so an older one never lands last.
+    saving = saving.then(() => post("/api/podcast/episode", rec)).then(async (r) => {
+      if (!r.ok) setStatus(`Could not save the episode: ${(await r.json()).error}`, true);
+    }).catch(() => setStatus("Could not save the episode (is the server running?)", true));
+  }, now ? 0 : 300);
+}
+
+$("startBtn").onclick = start;
+$("pauseBtn").onclick = togglePause;
+$("stopBtn").onclick = stopShow;
+$("noteBtn").onclick = submitBox;
+$("noteInput").addEventListener("keydown", (e) => { if (e.key === "Enter") submitBox(); });
+
+// ===== transcript ======================================================================================
+function scrollDown() { const t = $("transcript"); t.scrollTop = t.scrollHeight; }
+
+function bubble(name, html, cls) {
+  const c = cast().find((c) => c.name === name);
+  const el = document.createElement("div");
+  el.className = "turn " + (cls || "");
+  el.style.setProperty("--c", colorOf(name));
+  el.innerHTML = `${face(name, colorOf(name))}
+    <div class="bubble"><div class="who">${esc(name)}<span class="tagx">${c ? cap(c.role) + " · " + esc(attitudeLabel(c.attitude)) : isProducer(name) ? "Producer · You" : ""}</span></div><div class="txt">${html}</div><div class="prog"></div></div>`;
+  return el;
+}
+function showThinking(speaker) {
+  hideThinking();
+  show.thinkingName = speaker.name;
+  show.thinkingEl = bubble(speaker.name, 'thinking<span class="typing"><i></i><i></i><i></i></span>', "thinking queued");
+  $("transcript").appendChild(show.thinkingEl); scrollDown();
+}
+function hideThinking() { show.thinkingEl?.remove(); show.thinkingEl = null; show.thinkingName = null; }
+function renderTurn(turn) {
+  turn.el = bubble(turn.name, esc(turn.text), "queued");
+  if (show.thinkingEl) $("transcript").insertBefore(turn.el, show.thinkingEl); else $("transcript").appendChild(turn.el);
+  scrollDown();
+}
+
+// ===== orb view =========================================================================================
+// The studio's main view: a glass sphere that breathes when idle, swells with the voice and takes on
+// the speaker's colour, with live captions underneath. The thread view shows the full transcript.
+let view = store.get("view", "orb");
+function renderView() {
+  seg($("viewSeg"), [["orb", "Orb"], ["thread", "Thread"]], view, (v) => { view = v; store.set("view", v); renderView(); });
+  $("stage").hidden = view !== "orb";
+  $("transcript").hidden = $("vizWrap").hidden = view !== "thread";
+  if (view === "thread") scrollDown();
+}
+
+function renderSeats() {
+  const people = [...cast().map((c) => ({ name: c.name, color: colorOf(c.name), html: esc(c.name[0].toUpperCase()) })),
+    { name: producer().name, color: PRODUCER_COLOR, html: ICON_MIC }];
+  $("seats").innerHTML = people.map((p) => `<span class="avatar" data-name="${esc(p.name)}" style="--c:${p.color}" title="${esc(p.name)}">${p.html}</span>`).join("");
+}
+
+const stageState = { key: null, words: [] };
+function updateStage(now) {
+  const speaking = show.running && show.turns.find((t) => t.start !== null && now >= t.start && (now < t.end || !t.done));
+  const thinking = !speaking && show.running && show.thinkingName;
+  for (const a of $("seats").children) {
+    a.classList.toggle("on", !!speaking && a.dataset.name === speaking.name);
+    a.classList.toggle("next", !!thinking && a.dataset.name === thinking);
+  }
+  let key, color;
+  if (speaking) {
+    const text = speaking.cutShown ? speaking.cutText : speaking.text;
+    key = "s:" + show.turns.indexOf(speaking) + ":" + text.length;
+    color = colorOf(speaking.name);
+    if (key !== stageState.key) {
+      const c = cast().find((x) => x.name === speaking.name);
+      $("capWho").innerHTML = `${esc(speaking.name)}${c ? ` · ${cap(c.role)}` : speaking.human ? " · Producer" : ""}`;
+      $("capWho").style.setProperty("--c", color);
+      $("capLine").className = "cap-line";
+      // Split the line into subtitle-sized chunks of about 55 characters.
+      const chunks = [[]];
+      let len = 0;
+      for (const w of text.split(/\s+/)) {
+        if (len + w.length > 55 && chunks.at(-1).length) { chunks.push([]); len = 0; }
+        chunks.at(-1).push(w); len += w.length + 1;
+      }
+      stageState.chunks = chunks; stageState.total = chunks.flat().length; stageState.shown = -1;
+    }
+    // Show the chunk being spoken, lighting up its words roughly in step with the audio. While the
+    // line is still being voiced only part of its audio exists, so its full length is estimated from
+    // the word count and how fast this character has been talking.
+    let dur = speaking.end - speaking.start;
+    if (!speaking.done) dur = Math.max(dur, stageState.total / (show.wps[speaking.name] || 2.4));
+    const frac = dur > 0 ? Math.min(speaking.done ? 1 : 0.97, (now - speaking.start) / dur) : 0;
+    const lit = Math.ceil(frac * stageState.total);
+    let before = 0, ci = 0;
+    while (ci < stageState.chunks.length - 1 && lit > before + stageState.chunks[ci].length) before += stageState.chunks[ci++].length;
+    if (ci !== stageState.shown) {
+      $("capLine").innerHTML = stageState.chunks[ci].map((w) => `<span class="w">${esc(w)}</span>`).join(" ");
+      stageState.words = [...$("capLine").children]; stageState.shown = ci;
+    }
+    stageState.words.forEach((w, i) => w.classList.toggle("on", before + i < lit));
+  } else if (thinking) {
+    key = "t:" + thinking; color = colorOf(thinking);
+    if (key !== stageState.key) {
+      $("capWho").innerHTML = `${esc(thinking)} <span class="think">is thinking…</span>`;
+      $("capWho").style.setProperty("--c", color);
+      $("capLine").className = "cap-line"; $("capLine").innerHTML = ""; stageState.words = [];
+    }
+  } else {
+    const msg = show.running ? "" : $("status").textContent;
+    key = "i:" + show.running + msg; color = "#cde34a";
+    if (key !== stageState.key) {
+      $("capWho").textContent = "";
+      $("capLine").className = "cap-line idle";
+      $("capLine").innerHTML = show.running ? "" : msg && show.turns.length ? `<b>${esc(msg)}</b>Switch to Thread to read it all.`
+        : "<b>Ready when you are.</b>Pick a format, set a topic and press Start.";
+      stageState.words = [];
+    }
+  }
+  stageState.key = key;
+  drawOrb(color, !!speaking, !!thinking);
+}
+
+const orbCanvas = $("orb"), og = orbCanvas.getContext("2d");
+const orbState = { level: 0, rgb: [205, 227, 74], phase: 0, last: 0 };
+const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const rgba = ([r, g, b], a) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
+const timeBuf = new Uint8Array(256);
+function drawOrb(color, speaking, thinking) {
+  const dpr = window.devicePixelRatio || 1, W = orbCanvas.clientWidth;
+  if (!W) return;
+  if (orbCanvas.width !== W * dpr) { orbCanvas.width = orbCanvas.height = W * dpr; }
+  og.setTransform(dpr, 0, 0, dpr, 0, 0);
+  og.clearRect(0, 0, W, W);
+
+  // Loudness of what is playing right now, smoothed: quick to swell, slow to settle.
+  let target = 0;
+  if (analyser && speaking) {
+    analyser.getByteTimeDomainData(timeBuf);
+    let sum = 0; for (const v of timeBuf) { const x = (v - 128) / 128; sum += x * x; }
+    target = Math.min(1, Math.sqrt(sum / timeBuf.length) * 5);
+  }
+  const st = orbState;
+  st.level += (target - st.level) * (target > st.level ? 0.35 : 0.06);
+  const want = hexRgb(color);
+  st.rgb = st.rgb.map((v, i) => v + (want[i] - v) * 0.06);
+
+  const t = performance.now() / 1000, L = st.level;
+  // Clouds drift on an accumulated phase, so a louder voice speeds them up gently instead of
+  // making them jump (multiplying the clock by a changing speed teleported them every frame).
+  const dt = Math.min(0.05, st.last ? t - st.last : 0); st.last = t;
+  st.phase += dt * (0.18 + 0.3 * L);
+  const P = st.phase;
+  const breathe = 0.5 + 0.5 * Math.sin(t * (thinking ? 2 : 0.7));
+  const cx = W / 2, cy = W / 2;
+  const R = W * 0.36 * (1 + 0.025 * breathe + 0.06 * L);
+
+  // glow behind the glass
+  let gr = og.createRadialGradient(cx, cy, R * 0.5, cx, cy, R * 1.4);
+  gr.addColorStop(0, rgba(st.rgb, 0.12 + 0.25 * L + (thinking ? 0.06 * breathe : 0)));
+  gr.addColorStop(1, rgba(st.rgb, 0));
+  og.fillStyle = gr; og.fillRect(0, 0, W, W);
+
+  // the body: dark glass with drifting light inside
+  og.save();
+  og.beginPath(); og.arc(cx, cy, R, 0, Math.PI * 2); og.clip();
+  og.fillStyle = "#0a0b0e"; og.fillRect(cx - R, cy - R, R * 2, R * 2);
+  og.globalCompositeOperation = "lighter";
+  // Soft, overlapping clouds: [colour, strength, size, drift speed, offset, height]
+  const blobs = [
+    [st.rgb, 0.55, 1.05, 0.9, 0.0, 0.35],
+    [st.rgb, 0.35, 0.8, 1.3, 2.6, 0.05],
+    [[72, 92, 168], 0.55, 1.0, 0.7, 2.1, -0.45],
+    [[110, 120, 190], 0.3, 0.75, 1.1, 4.4, -0.15],
+    [[232, 128, 70], 0.12 + 0.25 * L, 0.65, 1.5, 4.2, 0.3],
+    [[255, 255, 255], 0.06 + 0.12 * L, 0.55, 1.7, 1.3, -0.2],
+  ];
+  for (const [c, a, r, sp, ph, oy] of blobs) {
+    const bx = cx + R * 0.42 * Math.sin(P * sp + ph);
+    const by = cy + R * oy + R * 0.28 * Math.cos(P * sp * 1.27 + ph);
+    const bg = og.createRadialGradient(bx, by, 0, bx, by, R * r);
+    bg.addColorStop(0, rgba(c, a)); bg.addColorStop(1, rgba(c, 0));
+    og.fillStyle = bg; og.fillRect(cx - R, cy - R, R * 2, R * 2);
+  }
+  og.globalCompositeOperation = "source-over";
+  // depth: light from the top left, shadow towards the bottom right
+  const sh = og.createRadialGradient(cx - R * 0.35, cy - R * 0.45, R * 0.05, cx, cy, R * 1.05);
+  sh.addColorStop(0, "rgba(255,255,255,0.16)"); sh.addColorStop(0.45, "rgba(255,255,255,0)"); sh.addColorStop(1, "rgba(0,0,0,0.5)");
+  og.fillStyle = sh; og.fillRect(cx - R, cy - R, R * 2, R * 2);
+  og.restore();
+
+  // rim and highlight
+  og.beginPath(); og.arc(cx, cy, R - 0.5, 0, Math.PI * 2);
+  og.strokeStyle = `rgba(255,255,255,${0.16 + 0.1 * L})`; og.lineWidth = 1.2; og.stroke();
+  const sp = og.createRadialGradient(cx - R * 0.38, cy - R * 0.5, 0, cx - R * 0.38, cy - R * 0.5, R * 0.42);
+  sp.addColorStop(0, "rgba(255,255,255,0.42)"); sp.addColorStop(1, "rgba(255,255,255,0)");
+  og.fillStyle = sp; og.beginPath(); og.arc(cx, cy, R, 0, Math.PI * 2); og.fill();
+}
+
+// Highlights the line being heard and keeps the clock, driven by the audio clock so Pause just works.
+function tick() {
+  if (ctx && show.turns.length) {
+    const now = ctx.currentTime;
+    let heard = 0;
+    show.turns.forEach((t, i) => {
+      if (!t.el) return;
+      const started = t.start !== null && now >= t.start;
+      const playing = started && (now < t.end || !t.done);
+      t.el.classList.toggle("queued", !started && show.running);
+      t.el.classList.toggle("speaking", show.running && playing);
+      if (t.cutAt && now >= t.cutAt && !t.cutShown) { t.el.querySelector(".txt").textContent = t.cutText; t.cutShown = true; }
+      const p = t.el.querySelector(".prog");
+      if (p) p.style.width = started && t.end > t.start ? `${Math.min(100, ((now - t.start) / (t.end - t.start)) * 100)}%` : "0";
+      if (started) heard = i + 1;
+    });
+    $("turnNo").textContent = heard;
+    const first = show.turns[0].start;
+    if (first !== null && show.running) {
+      const sec = Math.max(0, Math.floor(now - first));
+      $("clock").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+    }
+  }
+  if (view === "thread") draw();
+  else updateStage(ctx ? ctx.currentTime : 0);
+  requestAnimationFrame(tick);
+}
+
+// ===== export ==========================================================================================
+function episodeName(ext) {
+  const slug = (state.show || "episode").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const d = new Date(), p2 = (n) => String(n).padStart(2, "0");
+  return `${slug}-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.${ext}`;
+}
+function download(blob, name) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+// Mixes the episode exactly as it was heard: overlaps, cut-offs and reactions included.
+$("dlWav").onclick = () => {
+  const rate = 24000;
+  const parts = show.turns.filter((t) => t.pcm.length && t.start !== null);
+  if (!parts.length) return;
+  const t0 = parts[0].start;
+  const ends = parts.flatMap((t) => [t.end, ...t.reactions.map((r) => r.when + r.pcm.length / rate)]);
+  const mix = new Float32Array(Math.ceil((Math.max(...ends) - t0) * rate) + rate / 2);
+  const add = (pcm, when, gain, stopAt) => {
+    let at = Math.round((when - t0) * rate);
+    const fadeFrom = stopAt ? Math.round((stopAt - t0) * rate) : Infinity, fadeLen = Math.round(0.15 * rate);
+    for (let k = 0; k < pcm.length && at < mix.length; k++, at++) {
+      const fade = at < fadeFrom ? 1 : Math.max(0, 1 - (at - fadeFrom) / fadeLen);
+      if (fade === 0) break;
+      if (at >= 0) mix[at] += pcm[k] * gain * fade;
+    }
+  };
+  for (const t of parts) {
+    let when = t.start;
+    for (const p of t.pcm) { add(p, when, 1, t.cutAt); when += p.length / rate; }
+    for (const r of t.reactions) add(r.pcm, r.when, r.gain);
+  }
+  const buf = new ArrayBuffer(44 + mix.length * 2), v = new DataView(buf);
+  const str = (o, s) => [...s].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + mix.length * 2, true); str(8, "WAVE"); str(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, mix.length * 2, true);
+  for (let k = 0, o = 44; k < mix.length; k++, o += 2) { const x = Math.max(-1, Math.min(1, mix[k])); v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
+  download(new Blob([buf], { type: "audio/wav" }), episodeName("wav"));
+};
+$("dlTxt").onclick = () => {
+  const lines = [`${state.show}`, `Topic: ${state.topic}`, "", ...show.turns.filter((t) => t.pcm.length).map((t) => `${t.name}: ${t.cutText ?? t.text}\n`)];
+  download(new Blob([lines.join("\n")], { type: "text/plain" }), episodeName("txt"));
+};
+
+// ===== visualizer ========================================================================================
+const canvas = $("viz"), g = canvas.getContext("2d");
+function draw() {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const speaking = show.turns.find((t) => t.el?.classList.contains("speaking"));
+  const color = speaking ? colorOf(speaking.name) : "#cde34a";
+  g.fillStyle = color; g.shadowColor = color; g.shadowBlur = speaking ? 10 : 0;
+  const bars = Math.max(24, Math.floor(w / 9)), bw = w / bars;
+  const data = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+  if (data) analyser.getByteFrequencyData(data);
+  for (let i = 0; i < bars; i++) {
+    const k = Math.abs(i - bars / 2) / (bars / 2);
+    const bin = data ? data[Math.floor(k * data.length * 0.6)] / 255 : 0;
+    const bh = Math.max(3, bin * (h - 16));
+    g.globalAlpha = bin > 0.02 ? 0.35 + bin * 0.65 : 0.18;
+    g.beginPath(); g.roundRect ? g.roundRect(i * bw + bw * .25, (h - bh) / 2, bw * .5, bh, 2) : g.rect(i * bw + bw * .25, (h - bh) / 2, bw * .5, bh); g.fill();
+  }
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === " " && show.running && $("editor").hidden && !["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(document.activeElement.tagName)) { e.preventDefault(); togglePause(); }
+});
+
+init().then(() => requestAnimationFrame(tick)).catch((e) => setStatus(`Could not load: ${e.message}`, true));
+</script>
+</body>
+</html>

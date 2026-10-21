@@ -1,0 +1,15 @@
+# Environment and caches
+.venv/
+__pycache__/
+*.pyc
+
+# Model weights (gated on Hugging Face: download them yourself)
+phonon-40m-en/
+
+# Generated audio and personal data
+*.wav
+instabox.txt
+podcast.json
+podcast.json.tmp
+episodes/
+server.log
