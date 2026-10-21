@@ -670,7 +670,9 @@ def invite(req):
     producer = (req.get("producer") or "").strip()
     replace = bool(req.get("replace"))
     keep = [] if replace else cast
-    count = max(1, min(4, int(req.get("count") or 2)))
+    # One slot per guest, each optionally describing who is wanted ("a stand-up comedian"); empty means the AI's choice.
+    slots = [str(x).strip()[:200] for x in (req.get("slots") or [])][:6]
+    count = len(slots) if slots else max(1, min(4, int(req.get("count") or 2)))
     hint = str(req.get("hint") or "").strip()[:400]
     topic = str(req.get("topic") or "").strip()
     voices = [v for v in req.get("voices", []) if v.get("name")]
@@ -684,10 +686,12 @@ def invite(req):
 
     if FAKE:
         raw = {"characters": [
-            {"name": n, "role": "guest", "gender": g, "voice": "", "attitude": a, "persona": f"{n} lives this topic every day and has a firm view on it.",
+            {"name": n, "role": "guest", "gender": g, "voice": "", "attitude": a,
+             "persona": f"{n} is {('a ' + slots[i]) if i < len(slots) and slots[i] else 'someone'} who lives this topic and has a firm view on it.",
              "style": "Direct and warm.", "speed": 0, "expr": 1, "longest": 120}
-            for n, g, a in [("Dr. Lena Okafor", "female", "calm"), ("Marcus Reid", "male", "skeptical"),
-                            ("Aiko Tanaka", "female", "curious"), ("Sam Ortega", "male", "provocative")][:count]]}
+            for i, (n, g, a) in enumerate([("Dr. Lena Okafor", "female", "calm"), ("Marcus Reid", "male", "skeptical"),
+                                           ("Aiko Tanaka", "female", "curious"), ("Sam Ortega", "male", "provocative"),
+                                           ("Nina Hale", "female", "funny"), ("Omar Diaz", "male", "friendly")][:count])]}
     else:
         def line(v):
             tag = " [novelty character voice]" if v.get("locale") == "characters" else ""
@@ -700,8 +704,13 @@ def invite(req):
             f'You are the casting director of an unscripted audio podcast called "{req.get("show", "the show")}".',
             f"Topic: {topic}",
             "Already in the cast:", now,
-            f"Invite {count} {'person' if count == 1 else 'people'} so the conversation will be genuinely good on THIS topic."
-            + (f" The producer asks for: {hint}" if hint else ""),
+            *([f"Invite exactly {count} {'person' if count == 1 else 'people'}, one for each numbered slot below, and return them in that same order. "
+               "A slot names the kind of person the producer wants: honour it exactly (if it says comedian, that character is a comedian; "
+               "if it says politician, a politician) and make that person specific and interesting rather than a stereotype. "
+               'A slot marked "your choice" is yours: pick whoever this topic needs most.',
+               *[f'{i + 1}. {sl or "your choice"}' for i, sl in enumerate(slots)]]
+              if slots else [f"Invite {count} {'person' if count == 1 else 'people'} so the conversation will be genuinely good on THIS topic."]),
+            *([f"The producer also says: {hint}"] if hint else []),
             *(["There is no host yet, so the first one must have role \"host\"."] if need_host else
               ['Everyone you invite has role "guest".']),
             "",

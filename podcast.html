@@ -245,6 +245,9 @@
         <div class="group">
           <label class="f">Show name<input type="text" id="show" maxlength="80"></label>
           <label class="f">Topic<textarea id="topic" rows="5" maxlength="1500" placeholder="What should they discuss? Add angles, facts or questions to cover."></textarea></label>
+          <button class="btn invite" id="inviteBtn2" title="The AI casts whole characters for this topic">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9L12 2.5Zm6.5 12l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9.9-2.6Z"/></svg>Cast guests for this topic with AI
+          </button>
         </div>
         <div class="group">
           <span class="group-title">Start from a format</span>
@@ -720,26 +723,52 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("edit
 // ===== invite guests with AI ======================================================================
 // The AI casts whole characters for the topic: it looks through the templates first and writes new people
 // where none fits, picks each a free voice, and adds them to the cast for you to review and edit.
+const GUEST_TYPES = ["Comedian", "Journalist", "Politician", "Scientist", "Sceptic", "Storyteller", "Business owner", "Teenager"];
 function openInvite() {
   if (show.running) return;
   const ov = $("editor");
-  let count = 2, replace = false, busy = false;
+  let slots = ["", ""], replace = false, busy = false;
   ov.innerHTML = `
     <div class="dialog glass" role="dialog" aria-modal="true" aria-label="Invite guests with AI" style="--c:var(--accent)">
       <div class="dh"><span class="avatar" style="--c:var(--accent)">${ICON_SPARK}</span><div style="font-size:17px;font-weight:600">Invite guests with AI</div></div>
       <div class="db">
-        <span class="help">The casting director reads your topic and cast, then invites people who will make the conversation good: a template where one truly fits, a whole new character where none does. You can edit anyone afterwards.</span>
-        <label class="f">Who are you looking for? (optional)
-          <textarea class="hint" rows="3" maxlength="400" placeholder="e.g. a sleep coach, a sceptical parent, someone who disagrees with the others. Leave empty and the AI decides from the topic."></textarea>
-        </label>
-        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">How many</span><div class="seg count"></div></div>
+        <span class="help">One line per guest. Say what kind of person you want (a comedian, a politician, a nurse who hates night shifts) and the AI writes the whole character, with a voice. Leave a line empty and it chooses for you. It reuses one of your templates when that truly fits.</span>
+        <div class="slots" style="display:flex;flex-direction:column;gap:8px"></div>
+        <button class="btn ghost add-slot" type="button">+ Add another guest</button>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Quick picks</span><div class="chips">${GUEST_TYPES.map((t) => `<button class="chip" type="button" data-t="${t}">${t}</button>`).join("")}</div></div>
+        <label class="f">Anything else? (optional)<input type="text" class="hint" maxlength="400" placeholder="e.g. they should disagree a lot, or keep it light and funny"></label>
         <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Cast</span><div class="seg mode"></div></div>
         <div class="invite-note"></div>
       </div>
       <div class="df"><button class="btn ghost cancel">Cancel</button><span class="sp"></span><button class="btn primary go">${ICON_SPARK}Invite</button></div>
     </div>`;
   const q = (x) => ov.querySelector(x), note = (m, err) => { q(".invite-note").textContent = m; q(".invite-note").className = "invite-note" + (err ? " err" : ""); };
-  seg(q(".count"), [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], count, (v) => { count = v; });
+  const MAX = 6;
+  const renderSlots = () => {
+    const box = q(".slots"); box.innerHTML = "";
+    slots.forEach((v, i) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:8px;align-items:center";
+      row.innerHTML = `<input type="text" maxlength="200" placeholder="${i === 0 ? "e.g. a stand-up comedian" : i === 1 ? "e.g. an investigative journalist" : "Guest " + (i + 1) + ": leave empty and the AI chooses"}">
+        <button class="btn ghost icon rm" type="button" title="Remove this guest" ${slots.length === 1 ? "disabled" : ""}>✕</button>`;
+      const input = row.querySelector("input");
+      input.value = v;
+      input.oninput = () => { slots[i] = input.value; };
+      input.onkeydown = (e) => { if (e.key === "Enter") q(".go").click(); };
+      row.querySelector(".rm").onclick = () => { slots.splice(i, 1); renderSlots(); };
+      box.appendChild(row);
+    });
+    q(".add-slot").disabled = slots.length >= MAX;
+  };
+  renderSlots();
+  q(".add-slot").onclick = () => { slots.push(""); renderSlots(); box_focus(); };
+  const box_focus = () => q(".slots").lastElementChild?.querySelector("input")?.focus();
+  for (const chip of ov.querySelectorAll(".chip")) chip.onclick = () => {
+    const free = slots.findIndex((x) => !x.trim());
+    if (free >= 0) slots[free] = chip.dataset.t.toLowerCase();
+    else if (slots.length < MAX) slots.push(chip.dataset.t.toLowerCase());
+    renderSlots();
+  };
   seg(q(".mode"), [[false, "Add to my cast"], [true, "Replace my cast"]], replace, (v) => { replace = v; });
   q(".cancel").onclick = closeEditor;
   ov.onclick = (e) => { if (e.target === ov && !busy) closeEditor(); };
@@ -752,7 +781,7 @@ function openInvite() {
     try {
       const mine = producer().voice;
       const res = await post("/api/podcast/invite", {
-        characters: cast(), show: state.show, topic: state.topic, producer: producer().name, hint: q(".hint").value, count, replace,
+        characters: cast(), show: state.show, topic: state.topic, producer: producer().name, hint: q(".hint").value, slots: slots.map((x) => x.trim()), replace,
         voices: catalog.filter((v) => v.name !== mine).map(({ name, gender, age, locale }) => ({ name, gender, age, locale })),
         myTemplates: state.myTemplates, provider: state.settings.provider, llmModel: state.settings.llmModel, session: sampleSession,
       });
@@ -768,9 +797,9 @@ function openInvite() {
     }
   };
   ov.hidden = false;
-  q(".hint").focus();
+  ov.querySelector(".slots input").focus();
 }
-$("inviteBtn").onclick = openInvite;
+$("inviteBtn").onclick = $("inviteBtn2").onclick = openInvite;
 
 // ===== add menu ===================================================================================
 function renderAddMenu() {
@@ -909,7 +938,7 @@ function setControls() {
   $("live").className = "live" + (r ? (show.paused ? " paused" : " on") : "");
   $("liveText").textContent = r ? (show.paused ? "PAUSED" : "ON AIR") : "OFF AIR";
   for (const el of document.querySelectorAll("#cast .sample, #cast .preview, .fmt")) el.disabled = r;
-  $("addChar").disabled = $("inviteBtn").disabled = r;
+  $("addChar").disabled = $("inviteBtn").disabled = $("inviteBtn2").disabled = r;
 }
 
 function validate() {
