@@ -317,6 +317,11 @@
           <span class="group-title">Voices</span>
           <label class="f">Voice model<select id="ttsModel"></select></label>
         </div>
+        <div class="group">
+          <span class="group-title">Speech to text</span>
+          <span class="help" id="sttState"></span>
+          <button class="btn" id="sttGet" hidden>Download the speech model (about 290 MB)</button>
+        </div>
       </div>
     </aside>
 
@@ -985,7 +990,7 @@ function setControls() {
   $("stopBtn").disabled = !r;
   $("noteInput").disabled = $("noteBtn").disabled = !r;
   $("micBtn").disabled = !r || !sttReady || mic.busy;
-  $("micBtn").title = !sttReady ? "Speech to text is not installed (see the README)" : mic.on ? "Send it now" : "Talk instead of typing (the characters stop and listen)";
+  $("micBtn").title = !sttReady ? "Speech to text is not installed: download it under Settings" : mic.on ? "Send it now" : "Talk instead of typing (the characters stop and listen)";
   const has = show.turns.some((t) => t.pcm.length);
   $("dlWav").disabled = $("dlTxt").disabled = r || !has;
   $("live").className = "live" + (r ? (show.paused ? " paused" : " on") : "");
@@ -1643,7 +1648,19 @@ $("stopBtn").onclick = stopShow;
 $("noteBtn").onclick = submitBox;
 $("micBtn").innerHTML = ICON_MIC;
 $("micBtn").onclick = toggleMic;
-fetch("/api/stt").then((r) => r.json()).then((d) => { sttReady = !!d.ready; setControls(); }).catch(() => {});
+// The mic needs the Moonshine model on this computer. Settings can download it; this keeps the page in step.
+function renderStt(d) {
+  sttReady = !!d.ready; setControls();
+  const mb = (n) => Math.round(n / 1e6);
+  $("sttState").textContent = d.ready ? "Installed. Click the mic in the studio box to talk to the show."
+    : d.running ? (d.total ? `Downloading… ${mb(d.done)} of ${mb(d.total)} MB` : "Starting the download…")
+    : d.error || "Not installed. Talk to the show instead of typing: Moonshine runs on this computer, nothing is sent anywhere.";
+  $("sttGet").hidden = d.ready || d.running;
+  $("sttGet").textContent = d.error ? "Try again" : "Download the speech model (about 290 MB)";
+  if (d.running) setTimeout(() => fetch("/api/stt").then((r) => r.json()).then(renderStt).catch(() => {}), 700);
+}
+$("sttGet").onclick = () => post("/api/stt/download", {}).then((r) => r.json()).then(renderStt).catch((e) => setStatus(e.message, true));
+fetch("/api/stt").then((r) => r.json()).then(renderStt).catch(() => {});
 $("noteInput").addEventListener("keydown", (e) => { if (e.key === "Enter") submitBox(); });
 
 // ===== transcript ======================================================================================

@@ -15,6 +15,38 @@ machine, with [Phonon TTS](https://huggingface.co/gradium/phonon-40m-en). Also i
 - **AI providers**: [OpenRouter](https://openrouter.ai) (any of its models with one key), DeepSeek, or OpenCode Go
   (OpenAI-compatible chat completions).
 
+## Desktop app
+
+Download Podroom for Linux, Windows or macOS from [Releases](https://github.com/AronMgH/podroom/releases). It is a
+normal app window with everything bundled: no Python, browser or terminal needed. On first launch it uses
+phonon-31m-en, which downloads by itself (65 MB). Your show, episodes and downloaded models are kept in the app's data
+folder (Help → Open data folder), and your API keys in `~/.config/podroom/`.
+
+- **Linux**: the `.deb` installs it with a menu entry. The `.AppImage` runs from anywhere: make it executable first.
+  On Ubuntu 24.04 and later, AppImages of Electron apps can close straight away because of the system's sandbox rules;
+  the `.deb` does not have that problem.
+- **Windows**: run the installer. The builds are not code-signed yet, so SmartScreen may warn you: choose
+  *More info → Run anyway*.
+- **macOS**: open the `.dmg` (Apple Silicon `arm64` or Intel `x64`) and drag Podroom to Applications. It is not notarized
+  by Apple yet, so the first time, open it, then allow it under *System Settings → Privacy & Security → Open Anyway*.
+
+To talk to the show, download the speech model once under Settings → Speech to text. To use phonon-40m-en, accept its
+terms on Hugging Face and put its files in a `phonon-40m-en` folder inside the data folder.
+
+### Building it yourself
+
+The app is an [Electron](https://www.electronjs.org) window around the same Python server, bundled with
+[PyInstaller](https://pyinstaller.org). With the setup below done and Node.js 22:
+
+```bash
+uv pip install --python .venv/bin/python pyinstaller==6.22.3
+.venv/bin/python desktop/build_server.py
+cd desktop && npm ci && npx electron-builder --publish never
+```
+
+Installers land in `desktop/dist/`. `npm start` in `desktop/` runs the app straight from this checkout. Pushing a tag such
+as `v0.1.0` builds all platforms on GitHub and drafts a release with the installers.
+
 ## Setup
 
 ```bash

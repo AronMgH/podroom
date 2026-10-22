@@ -3,9 +3,9 @@
 Serves the UI on http://127.0.0.1:7860 and streams speech as raw float32 PCM
 while it is generated, so the browser can start playing within half a second.
 
-Models: every folder next to this file that holds a Phonon checkpoint
-(config.json plus model.*.gguf or model.safetensors), plus Phonon 31m from
-Hugging Face, which is not gated and downloads on first use.
+Models: every folder in the data folder (next to this file, unless PODROOM_DATA says otherwise) that holds
+a Phonon checkpoint (config.json plus model.*.gguf or model.safetensors), plus Phonon 31m from Hugging Face,
+which is not gated and downloads on first use.
 """
 import glob
 import json
@@ -14,6 +14,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy
@@ -21,7 +22,9 @@ import ptts
 
 import podcast
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# The pages ship with the code (inside the bundle when packaged); everything you make goes to the data folder.
+HERE = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+DATA = podcast.DATA_DIR
 HOST, PORT = "127.0.0.1", int(os.environ.get("PODROOM_PORT") or os.environ.get("PHONON_PORT") or "7860")
 MAX_CHARS = 20000
 HF_CACHE = os.path.join(os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface")), "hub")
@@ -56,7 +59,10 @@ _voices = None
 
 # Speech to text for the producer's mic: Moonshine (English, MIT) run by sherpa-onnx, fully offline.
 # The browser sends 16 kHz mono float32 PCM; clips are push-to-talk, so 30 s is plenty.
-STT_DIR = os.path.join(HERE, "moonshine-base-en")
+STT_DIR = os.path.join(DATA, "moonshine-base-en")
+STT_URL = "https://huggingface.co/csukuangfj/sherpa-onnx-moonshine-base-en-int8/resolve/main/"
+STT_FILES = ["preprocess.onnx", "encode.int8.onnx", "uncached_decode.int8.onnx", "cached_decode.int8.onnx", "tokens.txt", "LICENSE"]
+stt_download = {"running": False, "done": 0, "total": 0, "error": ""}
 STT_RATE = 16000
 STT_MAX_SECONDS = 30
 stt_lock = threading.Lock()  # separate from the TTS lock, so the mic never waits for a line being spoken
@@ -65,8 +71,8 @@ _stt = None
 
 def list_models():
     models = []
-    for d in sorted(os.listdir(HERE)):
-        path = os.path.join(HERE, d)
+    for d in sorted(os.listdir(DATA)):
+        path = os.path.join(DATA, d)
         config = os.path.join(path, "config.json")
         if not os.path.isfile(config):
             continue
@@ -145,6 +151,37 @@ def stt_files():
     return files
 
 
+def download_stt():
+    """Fetch the Moonshine model from Hugging Face into STT_DIR, keeping progress in stt_download for the page."""
+    part = STT_DIR + ".download"
+    try:
+        os.makedirs(part, exist_ok=True)
+        sizes = {}
+        for name in STT_FILES:  # sizes first, so the progress bar is honest from the start
+            req = urllib.request.Request(STT_URL + name, method="HEAD", headers={"User-Agent": podcast.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=30) as res:
+                sizes[name] = int(res.headers.get("Content-Length") or 0)
+        stt_download["total"] = sum(sizes.values())
+        for name in STT_FILES:
+            dest = os.path.join(part, name)
+            if os.path.isfile(dest) and os.path.getsize(dest) == sizes[name]:
+                stt_download["done"] += sizes[name]  # left over from an earlier try
+                continue
+            req = urllib.request.Request(STT_URL + name, headers={"User-Agent": podcast.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=60) as res, open(dest + ".tmp", "wb") as f:
+                while chunk := res.read(1 << 20):
+                    f.write(chunk)
+                    stt_download["done"] += len(chunk)
+            os.replace(dest + ".tmp", dest)
+        if os.path.isdir(STT_DIR):
+            os.rename(STT_DIR, STT_DIR + ".old-" + str(int(time.time())))
+        os.replace(part, STT_DIR)
+    except Exception as e:
+        stt_download["error"] = f"Download failed: {e}"
+    finally:
+        stt_download["running"] = False
+
+
 def get_stt():
     global _stt
     if _stt is None:
@@ -152,7 +189,7 @@ def get_stt():
 
         files = stt_files()
         if files is None:
-            raise FileNotFoundError("Speech-to-text model not found: see README, 'Speech to text'.")
+            raise FileNotFoundError("The speech-to-text model is not installed. Download it under Settings.")
         _stt = sherpa_onnx.OfflineRecognizer.from_moonshine(**files, num_threads=4)
     return _stt
 
@@ -253,7 +290,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/podcast/state":
             self.send_json(200, {"state": podcast.load_state(), "status": podcast.status()})
         elif self.path == "/api/stt":
-            self.send_json(200, {"ready": stt_files() is not None})
+            self.send_json(200, {"ready": stt_files() is not None, **stt_download})
         else:
             self.send_json(404, {"error": "not found"})
 
@@ -309,6 +346,11 @@ class Handler(BaseHTTPRequestHandler):
             self.turn(sample=True)
         elif self.path == "/api/stt":
             self.stt()
+        elif self.path == "/api/stt/download":
+            if not stt_download["running"] and stt_files() is None:
+                stt_download.update(running=True, done=0, total=0, error="")
+                threading.Thread(target=download_stt, daemon=True).start()
+            self.send_json(200, {"ready": stt_files() is not None, **stt_download})
         else:
             self.send_json(404, {"error": "not found"})
 
@@ -427,6 +469,12 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    if os.environ.get("PODROOM_EXIT_WITH_STDIN") == "1" and sys.stdin:
+        # Started by the desktop app: its end of the pipe closes when it quits or crashes, and so do we.
+        def watch():
+            sys.stdin.read()
+            os._exit(0)
+        threading.Thread(target=watch, daemon=True).start()
     print(f"Podroom on http://{HOST}:{PORT}", flush=True)
     try:
         server.serve_forever()

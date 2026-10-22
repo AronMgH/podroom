@@ -14,8 +14,12 @@ import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATE_FILE = os.path.join(HERE, "podcast.json")
-EPISODE_DIR = os.path.join(HERE, "episodes")
+# Where your show, episodes and downloaded models live. A source checkout keeps them next to the code; the
+# desktop app passes its own per-user folder, since the installed app itself is read-only.
+DATA_DIR = os.environ.get("PODROOM_DATA") or HERE
+os.makedirs(DATA_DIR, exist_ok=True)
+STATE_FILE = os.path.join(DATA_DIR, "podcast.json")
+EPISODE_DIR = os.path.join(DATA_DIR, "episodes")
 KEY_DIR = os.path.expanduser("~/.config/podroom")
 OLD_KEY_DIR = os.path.expanduser("~/.config/phonon-tts")  # where keys lived before the rename; still read
 FAKE = (os.environ.get("PODROOM_FAKE_LLM") or os.environ.get("PHONON_FAKE_LLM")) == "1"  # canned lines, for testing without a key
@@ -78,6 +82,7 @@ PROVIDERS = {
         "headers": {"HTTP-Referer": "https://github.com/AronMgH/podroom", "X-OpenRouter-Title": "Podroom"},
     },
 }
+PROVIDERS = {pid: PROVIDERS[pid] for pid in ("openrouter", "deepseek", "opencode-go")}  # OpenRouter first: one key, every model
 MODEL_ID = re.compile(r"^[~A-Za-z0-9._\-/:]{1,120}$")
 # (what the prompt asks for, max tokens, most sentences kept). Models drift long when only
 # asked nicely, so replies are also trimmed to the sentence limit after they come back.
@@ -179,8 +184,8 @@ DEFAULT_STATE = {
         "maxTurns": 12,
         "length": "short",
         "turnMode": "smart",
-        "provider": "deepseek",
-        "llmModel": "deepseek-flash",
+        "provider": "openrouter",
+        "llmModel": "deepseek/deepseek-v4.1-flash",
         "temperature": 1.0,
         "gap": 0.5,
         "interrupts": 1,  # 0 off, 1 some, 2 lots

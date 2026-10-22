@@ -16,3 +16,9 @@ podcast.json
 podcast.json.tmp
 episodes/
 server.log
+
+# Desktop builds
+/build/
+/dist/
+desktop/node_modules/
+desktop/dist/

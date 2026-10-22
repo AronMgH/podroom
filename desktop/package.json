@@ -1,0 +1,66 @@
+{
+  "name": "podroom",
+  "productName": "Podroom",
+  "version": "0.1.0",
+  "description": "An AI podcast studio that runs on your computer",
+  "homepage": "https://github.com/AronMgH/podroom",
+  "author": "AronMgH",
+  "license": "MIT",
+  "private": true,
+  "main": "main.js",
+  "desktopName": "podroom.desktop",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "io.github.aronmgh.podroom",
+    "productName": "Podroom",
+    "artifactName": "Podroom-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "splash.html",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/podroom-server",
+        "to": "server"
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "maintainer": "AronMgH",
+      "synopsis": "AI podcast studio that runs on your computer",
+      "syncDesktopName": true
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.entertainment",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Podroom listens when you click the mic, so you can talk to the show. Your speech is turned into text on this computer."
+      }
+    }
+  }
+}
