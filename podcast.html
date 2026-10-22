@@ -115,8 +115,13 @@
   .now h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now p { margin: 2px 0 0; font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .now .faces { display: flex; padding: 4px 0 0 8px; }
-  .now .part { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; padding: 4px 10px; border-radius: 999px; font-size: 12px;
-    color: var(--accent); background: var(--accent-soft); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+  .now .plan { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+  .timeline { display: flex; gap: 3px; height: 5px; }
+  .timeline i { position: relative; flex: 1; border-radius: 3px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+  .timeline i.done { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .timeline i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); }
+  .now .part { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; padding: 4px 10px; border-radius: 999px; font-size: 12px;
+    color: var(--accent); background: var(--accent-soft); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; margin-top: 0; }
   .now .faces .avatar { width: 30px; height: 30px; font-size: 12px; border: 2px solid #141517; margin-left: -8px; }
   .now .tools { display: flex; align-items: center; gap: 8px; flex: none; }
   .now .clock { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; margin-right: 4px; white-space: nowrap; }
@@ -295,7 +300,7 @@
     <!-- studio -->
     <section class="card studio">
       <div class="now">
-        <div class="t"><h2 id="nowShow"></h2><p id="nowTopic"></p><div class="part" id="nowPart" hidden></div></div>
+        <div class="t"><h2 id="nowShow"></h2><p id="nowTopic"></p><div class="plan" id="plan" hidden><div class="part" id="nowPart"></div><div class="timeline" id="timeline"></div></div></div>
         <div class="tools">
           <span class="live" id="live" hidden><span class="d"></span><span id="liveText">ON AIR</span></span>
           <span class="clock"><b id="clock">0:00</b> / <span id="turnMax">10:00</span></span>
@@ -1021,7 +1026,7 @@ async function start() {
     show.turns = []; $("transcript").innerHTML = ""; show.reopen = false;
   }
   show.base = show.turns.length; show.baseTokens = resume ? show.record.tokens || 0 : 0;
-  show.part = show.firstPart = resume ? show.record.planPart || 0 : 0; show.partStart = 0;
+  show.part = resume ? show.record.planPart || 0 : 0; show.partStart = null; show.replanning = false;
   show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
   $("clock").textContent = "0:00"; show.signedOff = false;
   show.running = true; show.epoch++;
@@ -1029,7 +1034,8 @@ async function start() {
   if (resume) saveRecord(true); else newRecord();
   setSetup(false); // the stage gets the whole width while the show plays
   const ep = show.epoch;
-  if (!show.record.plan) requestPlan(ep); // the opening does not need it, so it never holds up the start
+  // A new episode is planned first, while the voices warm up, so the host can open by saying what is coming.
+  show.planReady = show.record.plan ? Promise.resolve() : requestPlan(ep);
   renderPart();
   setControls();
   try { await audio(); } catch (e) { return endShow(`Could not start audio: ${e.message}`, true); }
@@ -1247,39 +1253,73 @@ async function requestPlan(ep) {
   show.calls.push(performance.now());
   try {
     const res = await post("/api/podcast/plan", { characters: cast(), show: state.show, topic: state.topic, minutes: state.settings.minutes,
-      provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session });
+      user: you().name, provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session });
     const d = await res.json().catch(() => ({}));
-    if (!alive(ep) || !res.ok || !d.segments?.length) return; // without a plan the show runs as before
+    if (!alive(ep) || !res.ok || !d.segments?.length) return; // without a plan the host still keeps the time
     if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
     show.record.plan = d.segments; show.record.planPart = 0; saveRecord();
-    show.part = show.firstPart = 0; show.partStart = plannedSecs();
+    show.part = 0; show.partStart = null;
     renderPart();
   } catch {}
 }
-// This session's seconds for part i: the parts still to come share the session's minutes, less the opening and sign-off.
-function partBudget(i) {
-  const plan = show.record?.plan || [], rest = plan.slice(show.firstPart);
-  const total = rest.reduce((n, x) => n + x.minutes, 0) || 1;
-  return (plan[i]?.minutes || 0) / total * Math.max(60, (state.settings.minutes || 10) * 60 - 40);
+// The host asked to change the plan: a new one from the part the show is in, made while the show goes on.
+// It can give parts more or less time, and change the episode's length when you asked for that.
+async function replan(note, ep) {
+  if (show.replanning || !show.record?.plan || !canCall()) return;
+  show.replanning = true; show.calls.push(performance.now());
+  setStatus("The host is changing the plan…");
+  try {
+    const res = await post("/api/podcast/plan", { characters: cast(), show: state.show, topic: state.topic, user: you().name,
+      minutes: state.settings.minutes, elapsed: plannedSecs() / 60, current: show.record.plan, part: show.part, note,
+      transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })),
+      provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session });
+    const d = await res.json().catch(() => ({}));
+    if (!alive(ep) || !res.ok || !d.segments?.length) return setStatus("");
+    if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
+    show.record.plan = [...show.record.plan.slice(0, show.part), ...d.segments];
+    show.partStart = plannedSecs();
+    const longer = d.minutes && d.minutes !== state.settings.minutes;
+    if (longer) { state.settings.minutes = d.minutes; save(); renderEpisode(); }
+    saveRecord(); renderPart();
+    setStatus(longer ? `New plan: the episode is now ${d.minutes} minutes.` : "The host changed the plan.");
+  } catch { setStatus(""); } finally { show.replanning = false; }
 }
+// Seconds part i has. The current part's clock starts with its first line after the opening (or after a replan).
+const partBudget = (i) => (show.record?.plan?.[i]?.minutes || 0) * 60;
 function agendaNow() {
-  const plan = show.record?.plan;
-  if (!show.running || !plan || show.part >= plan.length) return null;
-  const seg = plan[show.part], left = partBudget(show.part) - (plannedSecs() - show.partStart);
-  return { title: seg.title, points: seg.points, part: show.part + 1, parts: plan.length, next: plan[show.part + 1]?.title || "",
-    minsPart: Math.max(0, left / 60), minsShow: Math.max(0, timeLeft() / 60), wrap: left <= 0 && show.part < plan.length - 1 };
+  if (!show.running) return null;
+  const plan = show.record?.plan, base = { minsShow: Math.max(0, timeLeft() / 60), minsTotal: state.settings.minutes || 10 };
+  if (!plan || show.part >= plan.length) return { ...base, title: "" }; // no plan: the host still knows the time
+  if (show.partStart === null && aiCount() > 0) show.partStart = plannedSecs();
+  const seg = plan[show.part], left = partBudget(show.part) - (show.partStart === null ? 0 : plannedSecs() - show.partStart);
+  return { ...base, title: seg.title, points: seg.points, part: show.part + 1, parts: plan.length, next: plan[show.part + 1]?.title || "",
+    outline: plan.map((x) => `${x.title} (${Math.round(x.minutes * 10) / 10} min)`),
+    minsPart: Math.max(0, left / 60), wrap: left <= 0 && show.part < plan.length - 1 };
 }
 function nextPart() {
   show.part++; show.partStart = plannedSecs();
   show.record.planPart = show.part; saveRecord();
   renderPart();
 }
+// The timeline under the title: one bar per part, sized by its minutes, filling as the part plays.
 function renderPart() {
-  const plan = show.record?.plan, seg = plan?.[show.part ?? show.record?.planPart ?? 0];
-  $("nowPart").hidden = !seg;
-  if (!seg) return;
-  $("nowPart").textContent = `Part ${plan.indexOf(seg) + 1} of ${plan.length} · ${seg.title}`;
-  $("nowPart").title = seg.points.join("\n");
+  const plan = show.record?.plan;
+  $("plan").hidden = !plan?.length;
+  if (!plan?.length) return;
+  const at = Math.min(show.part ?? show.record.planPart ?? 0, plan.length - 1);
+  $("timeline").innerHTML = plan.map((x, i) => `<i style="flex:${x.minutes}" class="${i < at ? "done" : ""}" title="${esc(x.title)}: ${esc(x.points.join("; "))}">${i === at ? "<b></b>" : ""}</i>`).join("");
+  updatePart();
+}
+function updatePart() {
+  const plan = show.record?.plan;
+  if (!plan?.length || $("plan").hidden) return;
+  const at = Math.min(show.part ?? 0, plan.length - 1), seg = plan[at];
+  const used = show.running && show.partStart !== null ? plannedSecs() - show.partStart : 0;
+  const left = Math.max(0, partBudget(at) - used);
+  const fill = $("timeline").querySelector("b");
+  if (fill) fill.style.width = `${Math.min(100, (used / (partBudget(at) || 1)) * 100)}%`;
+  const text = `Part ${at + 1} of ${plan.length} · ${seg.title}` + (show.running ? ` · ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")} left` : "");
+  if ($("nowPart").textContent !== text) { $("nowPart").textContent = text; $("nowPart").title = seg.points.join("\n"); }
 }
 
 // Where the episode is: the host opens, and once the audio already queued reaches the chosen length
@@ -1303,8 +1343,14 @@ async function loop(ep) {
       const { speaker, intent, wantsCut, floor } = await chooseNext(phase, ep);
       if (!alive(ep)) return;
       const cut = phase === "normal" && !floor ? planInterruption(prev, speaker, wantsCut) : null;
+      if (phase === "open") { // the host opens with the plan: wait for it, but never for long
+        if (!show.record.plan) setStatus("Planning the episode…");
+        await Promise.race([show.planReady, sleep(25000)]);
+        if ($("status").textContent === "Planning the episode…") setStatus("");
+        if (!alive(ep)) return;
+      }
       showThinking(speaker);
-      const agenda = phase === "normal" ? agendaNow() : null;
+      const agenda = phase === "close" ? null : agendaNow();
       const asked = performance.now();
       const data = await askAI({
         characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase,
@@ -1316,6 +1362,7 @@ async function loop(ep) {
       if (data.usage) { show.usage.in += data.usage.in; show.usage.out += data.usage.out; }
       // The host has just closed a part whose time was up (unless they were answering you): on to the next one.
       if (agenda?.wrap && speaker.role === "host" && !floor && !prev?.human) nextPart();
+      if (data.replan) replan(data.replan, ep); // the host changed course or timing: redo the plan from here, in the background
       if (floor && show.floor?.name === speaker.name) { // count the time this part will take; end the floor when it is used up
         show.floor.used += data.text.split(/\s+/).length / wpsOf(speaker.name); show.floor.segs++;
         if (floor.finishing || show.floor.secs - show.floor.used < 12) { show.floor = null; show.floorEnd = show.turns.length + 1; }
@@ -1339,7 +1386,7 @@ async function loop(ep) {
     }
     if (!alive(ep)) return;
     await waitUntil(() => !alive(ep) || ctx.currentTime >= show.nextTime);
-    if (alive(ep)) endShow("Episode complete. Download it below.");
+    if (alive(ep)) endShow("Episode complete. The downloads are at the top.");
   } catch (e) {
     if (e.name === "AbortError" || !alive(ep)) return;
     endShow(`Stopped: ${e.message}`, true);
@@ -1946,6 +1993,7 @@ function tick() {
       $("clock").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
     }
   }
+  updatePart();
   if (view === "thread") draw();
   else updateStage(ctx ? ctx.currentTime : 0);
   requestAnimationFrame(tick);

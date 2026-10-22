@@ -556,19 +556,21 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
     return "\n".join(lines)
 
 
-def turn_cues(me, cast, transcript, user, intent=None, agenda=None):
+def turn_cues(me, cast, transcript, user, intent=None, agenda=None, phase="normal"):
     """Short situational hints: answer a direct question, and (for the host) bring in whoever has gone quiet."""
     cues = []
     if transcript:
         last = transcript[-1]
         if last["name"] != me["name"] and re.search(rf"\b{re.escape(me['name'])}\b", last["text"]) and "?" in last["text"]:
             cues.append(f"{last['name']} just asked you directly. Answer that first, in your own way.")
+        elif user and last["name"] == user and phase == "close":
+            cues.append(f"{user} just spoke. Answer them in a few words, then sign off: this is still the last line of the episode.")
         elif user and last["name"] == user:
             cues.append(f"{user}, who runs this show, just spoke. Do what they asked, fully and right now, and talk to them "
                         "directly. If they asked someone else, give way with one short line.")
     if intent:
         cues.append(f"What you want to do now: {intent}")
-    cues += agenda_cues(me, agenda, user, bool(user and transcript and transcript[-1]["name"] == user))
+    cues += agenda_cues(me, agenda, phase, user, bool(user and transcript and transcript[-1]["name"] == user))
     if stalled(transcript, cast, user):
         a, b = sorted({t["name"] for t in transcript[-4:]})
         if me.get("role") == "host":
@@ -717,14 +719,16 @@ def generate_turn(req):
     if FAKE:
         if floor:
             return {"name": me["name"], "text": fake_floor(me, words)}
-        line, nxt = take_next(fake_line(me, cast, transcript, phase), me, cast, user)
-        return {"name": me["name"], "text": f"Wait, hold on. {line}" if req.get("cutIn") else line, "next": nxt if pick_next else None}
+        line, replan = take_replan(fake_line(me, cast, transcript, phase))
+        line, nxt = take_next(line, me, cast, user)
+        return {"name": me["name"], "text": f"Wait, hold on. {line}" if req.get("cutIn") else line, "next": nxt if pick_next else None,
+                "replan": replan if me.get("role") == "host" and phase == "normal" else None}
 
     others = [c["name"] for c in cast if c["name"] != me["name"]]
     messages = [
         {"role": "system", "content": system_prompt(me, cast, req.get("show", "the show"), req.get("topic", ""), spec, phase,
                                                     req.get("cutIn"), user,
-                                                    turn_cues(me, cast, transcript, user, req.get("intent"), _agenda(req)), floor, pick_next)},
+                                                    turn_cues(me, cast, transcript, user, req.get("intent"), _agenda(req), phase), floor, pick_next)},
         {"role": "user", "content": user_prompt(me, transcript)},
     ]
     stop = [f"\n{n}:" for n in others + ([user] if user else [])][:4]  # four is the most every provider accepts
@@ -732,6 +736,7 @@ def generate_turn(req):
 
     choice = data["choices"][0]
     raw = re.sub(r"(?s)<think>.*?(</think>|$)", "", choice["message"].get("content") or "")  # inline reasoning
+    raw, replan = take_replan(raw)
     raw, nxt = take_next(raw, me, cast, user)
     # The opening and the sign-off get one extra sentence for the welcome or the thank-yous.
     everyone = cast + ([{"name": user}] if user else [])
@@ -748,6 +753,7 @@ def generate_turn(req):
         raise RuntimeError(f"{name} returned an empty line.")
     usage = data.get("usage", {})
     return {"name": me["name"], "text": text, "toYou": to_you, "next": nxt if pick_next and not to_you else None,
+            "replan": replan if me.get("role") == "host" and phase == "normal" else None,
             "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
 
 
@@ -837,7 +843,7 @@ def direct(req):
         f'Reply with JSON only: {{"next": "<one of: {", ".join(c["name"] for c in candidates)}>", "intent": "<one short sentence>", "cutIn": false, "floor": 0}}',
     ])
     agenda = _agenda(req)
-    if agenda:
+    if agenda and agenda["title"]:
         system += (f'\nThe show is in part {agenda["part"]} of {agenda["parts"]} of its run of show, "{agenda["title"]}", which should cover: '
                    + "; ".join(agenda["points"]) + ". Intents stay inside this part unless the person running the show asked for something else.")
     convo = "\n".join(f'{t["name"]}: {t["text"]}' for t in transcript[-16:]) or "(nothing yet)"
@@ -873,82 +879,146 @@ def direct(req):
 # and its share of the time. The host then steers by it: the page tells them which part they are in, what
 # it should cover and how long is left, and when a part's time is up the host moves the show on.
 
+def _clean_segments(raw_segments):
+    segments = []
+    for seg in (raw_segments or [])[:6]:
+        if not isinstance(seg, dict) or not str(seg.get("title") or "").strip():
+            continue
+        try:
+            mins = max(0.3, float(seg.get("minutes") or 0))
+        except (TypeError, ValueError):
+            mins = 0.5
+        points = [str(x).strip()[:200] for x in seg.get("points") or [] if str(x).strip()][:4]
+        segments.append({"title": str(seg["title"]).strip()[:80], "points": points, "minutes": mins})
+    return segments
+
+
 def plan_episode(req):
+    """The run of show. A first plan for the whole episode, or (with "current") a new plan from the part the show is
+    in, when the host says the conversation has changed course or the time should change."""
     cast = [c for c in req.get("characters", []) if c.get("name", "").strip()]
     minutes = _clamp_int(req.get("minutes"), 1, 120, 10)
     topic = str(req.get("topic") or "").strip()[:1500]
     if not topic:
         raise ValueError("no topic to plan")
+    user = (req.get("user") or "").strip() or None
+    current = _clean_segments(req.get("current")) if isinstance(req.get("current"), list) else None
+    part = _clamp_int(req.get("part"), 0, 5, 0)
+    try:
+        elapsed = max(0.0, float(req.get("elapsed") or 0))
+    except (TypeError, ValueError):
+        elapsed = 0.0
+    left = max(0.5, minutes - elapsed - 0.4)  # what is left, less the sign-off
+    talk = max(0.5, minutes - 0.7)  # a first plan: the episode less the opening and the sign-off
     parts = max(2, min(5, round(minutes / 3.5)))
     if FAKE:
-        each = minutes / parts
-        return {"segments": [{"title": f"Part {i + 1}", "points": [f"Point {i + 1}a", f"Point {i + 1}b"], "minutes": each} for i in range(parts)]}
+        if current:
+            rest = max(1, len(current) - part)
+            return {"segments": [dict(x, minutes=round(left / rest, 2)) for x in current[part:]], "minutes": minutes}
+        return {"segments": [{"title": f"Part {i + 1}", "points": [f"Point {i + 1}a", f"Point {i + 1}b"], "minutes": round(talk / parts, 2)}
+                             for i in range(parts)], "minutes": minutes}
     people = "; ".join(f'{c["name"]} ({c.get("role", "guest")}): {_first_sentence(c.get("persona", ""))}' for c in cast)
-    system = "\n".join([
-        f'You plan the run of show for an unscripted audio podcast called "{req.get("show") or "the show"}".',
-        f"Topic: {topic}",
-        f"At the table: {people}",
-        f"The episode lasts about {minutes} minutes, including a short opening and a sign-off.",
-        f"Split it into {parts} parts that together give listeners what this topic promises, in an order that builds. "
-        "If the topic is a request (explain something, cheer someone up, help someone decide), the parts deliver it rather than debate it.",
-        "Each part has a short title, two to four concrete points or questions to cover, and its share of the minutes. "
-        "The minutes add up to the episode length.",
-        'Reply with JSON only: {"segments": [{"title": "...", "points": ["...", "..."], "minutes": 3}]}',
-    ])
-    data, _, name = chat(req, [{"role": "system", "content": system}, {"role": "user", "content": "Plan the episode. JSON only."}], 700, 0.5, timeout=40)
+    head = [f'You plan the run of show for an unscripted audio podcast called "{req.get("show") or "the show"}".',
+            f"Topic: {topic}", f"At the table: {people}" + (f"; and {user}, a real person who runs the show." if user else "")]
+    fmt = 'Reply with JSON only: {"minutes": <episode length in minutes>, "segments": [{"title": "...", "points": ["...", "..."], "minutes": 2.5}]}'
+    if current:
+        done = "; ".join(f'"{x["title"]}"' for x in current[:part]) or "nothing yet"
+        convo = "\n".join(f'{t.get("name")}: {t.get("text")}' for t in (req.get("transcript") or [])[-12:] if isinstance(t, dict))
+        system = "\n".join(head + [
+            f"The episode is {minutes} minutes long and {elapsed:.1f} minutes have been used. Parts already done: {done}.",
+            "The plan from here was: " + "; ".join(f'"{x["title"]}" ({x["minutes"]:g} min: {", ".join(x["points"])})' for x in current[part:]),
+            f'The host has asked to change it: {str(req.get("note") or "the conversation has moved").strip()[:300]}',
+            f"Rewrite the plan from the part the show is in now. The first part you give is the one happening now, and its minutes are "
+            f"the time it still has from now. Follow where the conversation has gone and what was suggested. "
+            + (f"If {user} asked for a different episode length, use it and say so in \"minutes\"; " if user else "")
+            + f"otherwise the parts share the {left:.1f} minutes that are left and \"minutes\" stays {minutes}.",
+            "Each part has a short title, two to four concrete points or questions to cover, and its minutes.", fmt])
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": f"Recent conversation:\n{convo}\n\nThe new plan. JSON only."}]
+    else:
+        system = "\n".join(head + [
+            f"The episode lasts {minutes} minutes. After a short opening, the talk has {talk:.1f} minutes before the sign-off.",
+            f"Split those minutes into {parts} parts that together give listeners what this topic promises, in an order that builds. "
+            "If the topic is a request (explain something, cheer someone up, help someone decide), the parts deliver it rather than debate it.",
+            "Each part has a short title, two to four concrete points or questions to cover, and its share of the minutes.", fmt])
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": "Plan the episode. JSON only."}]
+    data, _, name = chat(req, messages, 800, 0.5, timeout=40)
     raw = re.sub(r"(?s)<think>.*?(</think>|$)", "", data["choices"][0]["message"].get("content") or "")
     m = re.search(r"\{.*\}", raw, re.S)
     if not m:
         raise RuntimeError(f"{name} gave no plan")
-    segments = []
-    for seg in (json.loads(m.group(0)).get("segments") or [])[:6]:
-        if not isinstance(seg, dict) or not str(seg.get("title") or "").strip():
-            continue
-        try:
-            mins = max(0.5, float(seg.get("minutes") or 0))
-        except (TypeError, ValueError):
-            mins = 0.5
-        points = [str(x).strip()[:200] for x in seg.get("points") or [] if str(x).strip()][:4]
-        segments.append({"title": str(seg["title"]).strip()[:80], "points": points, "minutes": mins})
+    out = json.loads(m.group(0))
+    segments = _clean_segments(out.get("segments"))
     if not segments:
         raise RuntimeError(f"{name} gave an empty plan")
+    new_minutes = _clamp_int(out.get("minutes"), 1, 120, minutes) if current and user else minutes
+    budget = (new_minutes - elapsed - 0.4) if current else talk
     total = sum(x["minutes"] for x in segments)
-    for x in segments:  # make the parts fill the episode exactly
-        x["minutes"] = round(x["minutes"] * minutes / total, 2)
+    for x in segments:  # the parts fill exactly the time there is
+        x["minutes"] = round(max(0.3, x["minutes"] * max(0.5, budget) / total), 2)
     usage = data.get("usage", {})
-    return {"segments": segments, "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
+    return {"segments": segments, "minutes": new_minutes,
+            "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
 
 
 def _agenda(req):
-    """The part of the plan the show is in, as the page sends it with a turn. Checked field by field."""
+    """Where the show is: the clock always, and the part of the plan when there is one. Checked field by field."""
     a = req.get("agenda")
-    if not isinstance(a, dict) or not str(a.get("title") or "").strip():
+    if not isinstance(a, dict):
         return None
     num = lambda k: max(0.0, float(a.get(k) or 0)) if isinstance(a.get(k), (int, float)) else 0.0
-    return {"title": str(a["title"]).strip()[:80], "points": [str(x).strip()[:200] for x in (a.get("points") or [])[:4] if str(x).strip()],
+    title = str(a.get("title") or "").strip()[:80]
+    return {"title": title, "points": [str(x).strip()[:200] for x in (a.get("points") or [])[:4] if str(x).strip()],
             "part": int(num("part")) or 1, "parts": int(num("parts")) or 1, "next": str(a.get("next") or "").strip()[:80],
-            "minsPart": round(num("minsPart"), 1), "minsShow": round(num("minsShow"), 1), "wrap": a.get("wrap") is True}
+            "outline": [str(x).strip()[:80] for x in (a.get("outline") or [])[:6] if str(x).strip()],
+            "minsPart": round(num("minsPart"), 1), "minsShow": round(num("minsShow"), 1), "minsTotal": round(num("minsTotal"), 1),
+            "wrap": a.get("wrap") is True}
 
 
-def agenda_cues(me, agenda, user=None, user_spoke=False):
-    """Run-of-show hints: the host steers by the plan; guests just know which part the show is in."""
+def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
+    """The host runs the clock and the plan; guests just know which part the show is in."""
     if not agenda:
         return []
-    where = f'Run of show: part {agenda["part"]} of {agenda["parts"]}, "{agenda["title"]}"'
-    if me.get("role") != "host":
-        return [f"{where}. Keep your point inside it."]
-    points = "; ".join(agenda["points"])
-    cues = [f"{where}. It should cover: {points}." if points else f"{where}.",
-            f'About {agenda["minsPart"]:g} minutes left in this part and {agenda["minsShow"]:g} in the episode. You keep the show on '
-            "this plan: if the talk drifts away from these points, bring it back in a friendly way, and keep an eye on the time."]
+    host = me.get("role") == "host"
+    if phase == "open":
+        if host and agenda["outline"]:
+            return [f"Today's run of show ({agenda['minsTotal']:g} minutes): " + "; ".join(agenda["outline"]) + ". In your welcome, tell the "
+                    "listeners in one short sentence what the episode will cover, then start on the first part."]
+        return []
+    if phase == "close":
+        return []
+    if not host:
+        return [f'Run of show: part {agenda["part"]} of {agenda["parts"]}, "{agenda["title"]}". Keep your point inside it.'] if agenda["title"] else []
+    cues = []
+    if agenda["title"]:
+        points = "; ".join(agenda["points"])
+        cues.append(f'Run of show: part {agenda["part"]} of {agenda["parts"]}, "{agenda["title"]}"' + (f". It should cover: {points}." if points else "."))
+        cues.append(f'About {agenda["minsPart"]:g} minutes left in this part and {agenda["minsShow"]:g} in the episode. You keep the show on this plan '
+                    "and on time: if the talk drifts away from these points, bring it back in a friendly way.")
+        cues.append("If someone suggests a better direction, a part deserves more or less time, or " + (f"{user} " if user else "the person running the show ")
+                    + "asks for a different length, go with it and end your line with [REPLAN: what should change]. The plan and timing will be redone.")
+    else:
+        cues.append(f'About {agenda["minsShow"]:g} minutes left in the episode. Keep an eye on the time.')
     if user_spoke:
         cues.append(f"{user} just spoke: do what they asked first. The plan can wait until that is done.")
     elif agenda["wrap"] and agenda["next"]:
         cues.append(f'This part\'s time is up. Close it in one sentence and move the show to the next part: "{agenda["next"]}". '
                     "Bring in a guest on it by name.")
+    elif agenda["minsShow"] <= 1.5:
+        cues.append("The episode is nearly over: start bringing the conversation to a close, with no new topics.")
     elif agenda["wrap"]:
         cues.append("This part's time is up. Close it in one sentence and steer towards the last word on the topic.")
     return cues
+
+
+REPLAN_TAG = re.compile(r"[\[(]\s*replan\s*:\s*([^\]\)\n]{1,300})[\])]", re.I)
+
+
+def take_replan(raw):
+    """Split the host's [REPLAN: what should change] tag out of the reply, wherever it is."""
+    m = REPLAN_TAG.search(raw)
+    if not m:
+        return raw, None
+    return (raw[: m.start()] + raw[m.end():]).strip(), m.group(1).strip()
 
 
 # ---- casting ---------------------------------------------------------------------------
@@ -1117,6 +1187,8 @@ def fake_line(me, cast, transcript, phase):
         "Let me push back on that for a second.",
         "Honestly, I think the real question is about cost, and nobody in this industry wants to talk about that part.",
     ])
+    if me.get("role") == "host" and random.random() < 0.2:
+        line += " [REPLAN: give this part a bit more time]"
     if others and random.random() < 0.5:
         line += f" What do you think, {random.choice(others)}?"
     elif others and random.random() < 0.8:
