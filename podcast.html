@@ -1039,7 +1039,7 @@ async function start() {
   }
   show.base = show.turns.length; show.baseTokens = resume ? show.record.tokens || 0 : 0;
   show.part = resume ? show.record.planPart || 0 : 0; show.partStart = null; show.replanning = false;
-  show.youHere = you().here !== false; show.event = null;
+  show.youHere = you().here !== false; show.event = null; show.askAngle = ""; show.awaitingAngle = ""; show.replanWait = null;
   show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
   $("clock").textContent = "0:00"; show.signedOff = false;
   show.running = true; show.epoch++;
@@ -1278,12 +1278,14 @@ async function requestPlan(ep) {
     if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
     show.record.plan = d.segments; show.record.planPart = 0; saveRecord();
     show.part = 0; show.partStart = null;
+    show.askAngle = show.youHere && d.question ? d.question : ""; // a broad topic: the host asks you first
     renderPart();
   } catch {}
 }
 // The host asked to change the plan: a new one from the part the show is in, made while the show goes on.
 // It can give parts more or less time, and change the episode's length when you asked for that.
-async function replan(note, ep) {
+async function replan(note, ep, waitForBudget = false) {
+  if (waitForBudget) await waitUntil(() => !show.running || canCall());
   if (show.replanning || !show.record?.plan || !canCall()) return;
   show.replanning = true; show.calls.push(performance.now());
   setStatus("The host is changing the plan…");
@@ -1316,7 +1318,7 @@ function agendaNow() {
   if (show.partStart === null && aiCount() > 0) show.partStart = plannedSecs();
   const seg = plan[show.part], left = partBudget(show.part) - (show.partStart === null ? 0 : plannedSecs() - show.partStart);
   return { ...base, title: seg.title, points: seg.points, part: show.part + 1, parts: plan.length, next: plan[show.part + 1]?.title || "",
-    outline: plan.map((x) => `${x.title} (${Math.round(x.minutes * 10) / 10} min)`),
+    outline: plan.map((x) => `${x.title} (${Math.round(x.minutes * 10) / 10} min)`), ask: aiCount() === 0 && show.youHere ? show.askAngle : "",
     minsPart: Math.max(0, left / 60), wrap: left <= 0 && show.part < plan.length - 1, checkIn: hostQuiet() };
 }
 function nextPart() {
@@ -1372,6 +1374,12 @@ async function loop(ep) {
         if ($("status").textContent === "Planning the episode…") setStatus("");
         if (!alive(ep)) return;
       }
+      if (show.replanWait) {
+        setStatus("Fitting the plan to your answer…");
+        await Promise.race([show.replanWait, sleep(25000)]);
+        show.replanWait = null;
+        if (!alive(ep)) return;
+      }
       showThinking(speaker);
       const agenda = phase === "close" ? null : agendaNow();
       const asked = performance.now();
@@ -1405,6 +1413,7 @@ async function loop(ep) {
       // How long the AI took and how much silence that left, in the console for anyone tuning speed.
       console.info(`[podroom] line ${show.turns.indexOf(turn) + 1} ${speaker.name}: AI ${turn.aiMs} ms, extra silence ${(turn.late || 0).toFixed(1)} s`
         + (data.next ? `, picks ${data.next}` : ""));
+      if (phase === "open") { show.awaitingAngle = data.toYou && show.askAngle ? show.askAngle : ""; show.askAngle = ""; }
       if (data.toYou && phase !== "close" && show.youHere) return yourTurn(turn, ep);
       if (phase === "close") show.signedOff = true;
     }
@@ -1559,6 +1568,11 @@ function cutPlaying() {
 
 // You say something: it goes straight into the conversation (never voiced) and the characters answer it.
 function youSay(text) {
+  if (show.awaitingAngle) {
+    const q = show.awaitingAngle; show.awaitingAngle = "";
+    show.replanWait = replan(`${you().name || "The person running the show"} was asked "${q}" and answered: ${text}`, show.epoch, true);
+    show.event = { kind: "answered" };
+  }
   show.floor = null; // anything you say replaces a stage you gave earlier
   cutPlaying();
   dropQueued();
@@ -1581,6 +1595,7 @@ function togglePresence() {
   const name = you().name || "You", text = show.youHere ? "joined the table" : "left the table";
   logEntry({ type: "event", name, text });
   noteInThread(`${name} ${text}`);
+  if (!show.youHere) show.awaitingAngle = "";
   show.event = { kind: show.youHere ? "join" : "leave" };
   setStatus(show.youHere ? "You are at the table." : "You left the table: the show carries on without you.");
   setControls();
@@ -1639,7 +1654,9 @@ async function yourTurn(turn, ep) {
   if (sttReady && !mic.on && !mic.busy) return startMic(YOUR_TURN_WAIT, `Your turn: ${turn.name} is listening…`);
   setStatus(`Your turn: ${turn.name} is waiting for you. Type in the box.`);
   await sleep(YOUR_TURN_WAIT * 1000);
-  if (alive(ep)) { setStatus(""); carryOn(); }
+  if (!alive(ep)) return;
+  if (show.awaitingAngle) { show.awaitingAngle = ""; show.event = { kind: "noAnswer" }; }
+  setStatus(""); carryOn();
 }
 
 function toggleMic() {
