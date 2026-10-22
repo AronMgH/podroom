@@ -2,8 +2,8 @@
 Type=Application
 Name=Phonon TTS
 Comment=AI podcast studio and text-to-speech with Phonon
-Exec=/home/amigos/general/phonon/phonon-tts.sh
-Icon=/home/amigos/general/phonon/icon.svg
+Exec=@DIR@/phonon-tts.sh
+Icon=@DIR@/icon.svg
 Terminal=false
 Categories=Audio;AudioVideo;
 StartupWMClass=PhononTTS

@@ -230,6 +230,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/podcast"):
             with open(os.path.join(HERE, "podcast.html"), "rb") as f:
                 self.send_body(200, f.read(), "text/html; charset=utf-8")
+        elif self.path == "/casts":
+            with open(os.path.join(HERE, "casts.html"), "rb") as f:
+                self.send_body(200, f.read(), "text/html; charset=utf-8")
+        elif self.path.startswith("/api/podcast/models?provider="):
+            pid = self.path.split("=", 1)[1]
+            if pid not in podcast.PROVIDERS:
+                return self.send_json(400, {"error": "unknown provider"})
+            self.send_json(200, podcast.list_models(pid))
+        elif self.path == "/api/podcast/people":
+            self.send_json(200, podcast.past_characters())
         elif self.path == "/speak":
             with open(os.path.join(HERE, "speak.html"), "rb") as f:
                 self.send_body(200, f.read(), "text/html; charset=utf-8")

@@ -54,7 +54,30 @@ PROVIDERS = {
         # Go asks clients to name themselves and send a stable session ID per conversation.
         "session_header": "x-opencode-session",
     },
+    # OpenRouter reaches hundreds of models with one key. The list is a starting point: any model ID from
+    # openrouter.ai/models works. Reasoning is switched off per model from its catalog entry (see _reasoning).
+    "openrouter": {
+        "label": "OpenRouter",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "env": "OPENROUTER_API_KEY",
+        "keyHint": "sk-or-…",
+        "models": [
+            ("deepseek/deepseek-v4.1-flash", "DeepSeek V4.1 Flash (fast, cheap)"),
+            ("anthropic/claude-haiku-5.5", "Claude Haiku 5.5 (fast)"),
+            ("qwen/qwen3.8-flash", "Qwen3.8 Flash (fast)"),
+            ("anthropic/claude-sonnet-5", "Claude Sonnet 5"),
+            ("moonshotai/kimi-k3", "Kimi K3"),
+            ("mistralai/mistral-large-4-0", "Mistral Large 4"),
+            ("google/gemini-3.8-flash", "Gemini 3.8 Flash (always thinks a little)"),
+        ],
+        "anyModel": True,
+        "catalog": "https://openrouter.ai/api/v1/models",
+        "thinking": (),
+        # App attribution: optional, shows the app on openrouter.ai rankings.
+        "headers": {"HTTP-Referer": "https://github.com/AronMgH/podcast-studio", "X-OpenRouter-Title": "Podcast Studio"},
+    },
 }
+MODEL_ID = re.compile(r"^[~A-Za-z0-9._\-/:]{1,120}$")
 # (what the prompt asks for, max tokens, most sentences kept). Models drift long when only
 # asked nicely, so replies are also trimmed to the sentence limit after they come back.
 LENGTHS = {
@@ -147,6 +170,8 @@ DEFAULT_STATE = {
     "topic": "Will AI agents replace apps, or just become another app?",
     "characters": [dict(_T["t-host"], id="c1"), dict(_T["t-engineer"], id="c2")],
     "myTemplates": [],
+    "casts": [],        # saved lineups from the Casts page: {"id", "name", "characters": [...]}
+    "hiddenPast": [],   # names hidden from "From past episodes" on the Casts page
     # You: the real person running the show, who joins in from the studio box (typed or spoken, never voiced).
     "you": {"name": ""},
     "settings": {
@@ -245,6 +270,28 @@ def save_episode(rec):
     return name
 
 
+def past_characters():
+    """Everyone who has been on an episode, newest appearance first, one entry per name."""
+    people = {}
+    for path in sorted((f for f in os.listdir(EPISODE_DIR) if f.endswith(".json")), reverse=True) if os.path.isdir(EPISODE_DIR) else []:
+        try:
+            with open(os.path.join(EPISODE_DIR, path)) as f:
+                rec = json.load(f)
+        except (OSError, ValueError):
+            continue
+        for c in rec.get("cast") or []:
+            name = str(c.get("name") or "").strip()
+            if not name or not isinstance(c, dict):
+                continue
+            seen = people.get(name.lower())
+            if seen:
+                seen["episodes"] += 1
+                continue
+            people[name.lower()] = dict(c, name=name, episodes=1, lastShow=rec.get("show", ""),
+                                        lastTopic=rec.get("topic", ""), lastAt=rec.get("startedAt", ""))
+    return list(people.values())
+
+
 def save_sample(speaker, text, show="", topic=""):
     os.makedirs(EPISODE_DIR, exist_ok=True)
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -283,12 +330,65 @@ def delete_key(provider):
         pass
 
 
+_catalogs = {}  # provider id -> (fetched at, {model id: entry})
+
+
+def catalog(pid):
+    """The provider's public model list, fetched at most once an hour. Empty when it cannot be reached."""
+    url = PROVIDERS[pid].get("catalog")
+    if not url:
+        return {}
+    at, models = _catalogs.get(pid, (0, {}))
+    if time.time() - at < 3600:
+        return models
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=20) as res:
+            rows = json.load(res).get("data", [])
+        models = {m["id"]: m for m in rows if isinstance(m, dict) and m.get("id")}
+        _catalogs[pid] = (time.time(), models)
+    except (OSError, ValueError) as e:
+        print(f"model list from {url} failed: {e}", file=sys.stderr, flush=True)
+        _catalogs[pid] = (time.time() - 3300, models)  # try again in five minutes
+    return models
+
+
+def list_models(pid):
+    """Text chat models for the model picker: id, name, and price per million tokens in and out."""
+    out = []
+    for m in catalog(pid).values():
+        arch = m.get("architecture") or {}
+        if "text" not in (arch.get("output_modalities") or ["text"]) or "embedding" in (arch.get("modality") or ""):
+            continue
+        price = m.get("pricing") or {}
+        try:
+            cost = [round(float(price.get(k) or 0) * 1e6, 3) for k in ("prompt", "completion")]
+        except (TypeError, ValueError):
+            cost = None
+        out.append({"id": m["id"], "name": m.get("name") or m["id"], "price": cost,
+                    "thinks": bool((m.get("reasoning") or {}).get("mandatory"))})
+    return sorted(out, key=lambda m: m["name"].lower())
+
+
+def _reasoning(pid, model):
+    """OpenRouter: the reasoning setting that keeps replies quick. Returns (setting or None, extra token budget)."""
+    info = (catalog(pid).get(model) or {}).get("reasoning")
+    if info is None:  # unknown model, or the catalog is unreachable: let it think if it must, but hide it
+        return {"exclude": True}, 2000
+    efforts = info.get("supported_efforts") or []
+    if not info.get("mandatory"):
+        return ({"effort": "none"} if "none" in efforts else {"enabled": False}), 0
+    lowest = next((e for e in ("minimal", "low", "medium") if e in efforts), None)
+    return dict({"effort": lowest} if lowest else {}, exclude=True), 2000
+
+
 def status():
     return {
         "fake": FAKE,
         "providers": [
             {"id": pid, "label": p["label"], "keyHint": p["keyHint"], "keyFile": key_file(pid).replace(os.path.expanduser("~"), "~"),
-             "keyConfigured": FAKE or bool(api_key(pid)), "models": [{"id": m, "label": l} for m, l in p["models"]]}
+             "keyConfigured": FAKE or bool(api_key(pid)), "models": [{"id": m, "label": l} for m, l in p["models"]],
+             "anyModel": bool(p.get("anyModel"))}
             for pid, p in PROVIDERS.items()
         ],
         "attitudes": [{"id": k, "label": v[0], "prompt": v[1]} for k, v in ATTITUDES.items()],
@@ -333,7 +433,11 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
                      "they like. What they ask for happens, immediately.")
     lines += [
         f"Today's topic: {topic.strip()}",
-        "Nobody has planned where this conversation goes. Follow it wherever it leads, and let your views change if someone makes a good point.",
+        "Nobody has planned where this conversation goes. Follow it wherever it leads. Change your mind only when someone gives you "
+        "a real reason, not just to be agreeable.",
+        "People listen to this for fun. Be specific, surprising and alive: real details, fresh examples, humour where it fits. "
+        "If the topic is a request (cheer someone up, explain something, help them decide), the show exists to deliver it: "
+        "give them the thing itself, such as the story, the joke, the tip or the answer, rather than debating whether it can be done.",
         "",
         "Rules:",
         f'- Reply with only what {me["name"]} says next, out loud: {spec[0]}.',
@@ -343,9 +447,10 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
         "your opinions, your rhythm.",
         "- Respond to what was just said before anything else: answer it, agree and add to it, or push back on it. "
         "Stay on the thread everyone is on. Bring in your own background only when it says something about that exact "
-        "point, and tie it back to the topic. Never change the subject or start a new side story on your own.",
+        "point, and tie it back to the topic. Never change the subject or start a new side story on your own. "
+        "Never retell a story, example or image that has already been used on this episode, by you or anyone: bring a new one.",
         "- Sound like a real person on a relaxed podcast: contractions and natural reactions such as \"Oh, totally\", "
-        "\"No, no, no\" or \"Fair enough\". Vary your shape: sometimes a blunt one-liner, sometimes a quick story.",
+        "\"No, no, no\" or \"Wait, really?\". Vary your shape: sometimes a blunt one-liner, sometimes a quick story.",
         "- Never write lines for anyone else and never start with your own name. Do not repeat points already made "
         "and do not summarise the conversation.",
         *([f"- {user} is in charge and their word is final. If they ask for something, do it at once and exactly, even if it "
@@ -359,8 +464,8 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
                      "a question, and speak as one continuous stretch of talk.")
     elif host:
         lines.append("- You are the host, so you steer. React briefly in your own voice, then either ask one sharp follow-up "
-                     "or bring in a guest who has been quiet, by name. When you move to a new angle, link it to what was "
-                     "just said so the turn feels natural. Keep it short: the guests are the stars. "
+                     "or bring in a guest who has been quiet, by name. When a point has gone back and forth twice, close it "
+                     "in a few words and move to a fresh, concrete angle on the topic, linked to what was just said so the turn feels natural. Keep it short: the guests are the stars. "
                      + (f"What {user} asks for always comes before your steering." if user else ""))
     else:
         lines.append("- You are a guest, not an interviewer. You answer, argue, tell stories and give opinions. "
@@ -410,12 +515,27 @@ def turn_cues(me, cast, transcript, user, intent=None):
                         "directly. If they asked someone else, give way with one short line.")
     if intent:
         cues.append(f"What you want to do now: {intent}")
+    if stalled(transcript, cast, user):
+        a, b = sorted({t["name"] for t in transcript[-4:]})
+        if me.get("role") == "host":
+            cues.append(f"{a} and {b} have been going back and forth on the same point. Close that thread in one sentence "
+                        "and open a fresh, concrete angle on the topic, or bring in someone else.")
+        else:
+            cues.append("This back-and-forth has run its course. Do not make another round of the same point: add something new.")
     if me.get("role") == "host" and len(transcript) >= 4:
         recent = {t["name"] for t in transcript[-4:]}
         quiet = [c["name"] for c in cast if c["name"] != me["name"] and c["name"] not in recent]
         if quiet:
             cues.append(f"{quiet[0]} has not spoken for a while. Consider bringing them in.")
     return cues
+
+
+def stalled(transcript, cast, user=None):
+    """True when two characters have taken the last four lines between them while others wait, which is where a thread
+    goes in circles. A two-person show always looks like that, so it never counts as stalled."""
+    last = transcript[-4:]
+    names = {t["name"] for t in last}
+    return len(cast) >= 3 and len(last) == 4 and user not in names and len(names) == 2
 
 
 def user_prompt(me, transcript):
@@ -480,20 +600,22 @@ def chat(req, messages, max_tokens, temperature, stop=None, timeout=90):
     if not key:
         raise PermissionError(f"Add your {name} API key in Settings first.")
     models = [m for m, _ in prov["models"]]
-    model = req.get("llmModel") if req.get("llmModel") in models else models[0]
-    thinking_off = model.startswith(prov["thinking"])
-    body = {
-        "model": model,
-        "messages": messages,
-        "temperature": max(0.0, min(2.0, float(temperature))),
-        "max_tokens": max_tokens if thinking_off else max_tokens + 2000,
-        "stream": False,
-    }
+    wanted = str(req.get("llmModel") or "").strip()
+    model = wanted if wanted in models or (prov.get("anyModel") and MODEL_ID.match(wanted)) else models[0]
+    body = {"model": model, "messages": messages, "temperature": max(0.0, min(2.0, float(temperature))), "stream": False}
+    if "catalog" in prov:
+        reasoning, extra = _reasoning(pid, model)
+        if reasoning:
+            body["reasoning"] = reasoning
+    elif model.startswith(prov["thinking"]):
+        body["thinking"] = {"type": "disabled"}  # thinking is on by default and only adds delay here
+        extra = 0
+    else:
+        extra = 2000
+    body["max_tokens"] = max_tokens + extra
     if stop:
         body["stop"] = stop
-    if thinking_off:
-        body["thinking"] = {"type": "disabled"}  # thinking is on by default and only adds delay here
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}", "User-Agent": USER_AGENT}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}", "User-Agent": USER_AGENT, **prov.get("headers", {})}
     if prov.get("session_header") and req.get("session"):
         headers[prov["session_header"]] = str(req["session"])[:100]
     request = urllib.request.Request(prov["url"], data=json.dumps(body).encode(), headers=headers)
@@ -556,8 +678,12 @@ def generate_turn(req):
     # The opening and the sign-off get one extra sentence for the welcome or the thank-yous.
     everyone = cast + ([{"name": user}] if user else [])
     text = limit_sentences(clean(raw, me, everyone), spec[2] + (1 if phase in ("open", "close") else 0))
-    # Handing over to you: the model tags it (clean() strips the tag), or the line ends by asking you by name.
-    to_you = bool(user) and phase != "close" and bool(re.search(r"\[\s*handover\s*\]", raw, re.I) or asks_user(text, user))
+    # Handing over to you: the line ends by asking you by name, or the model tags it (clean() strips the tag). The tag
+    # only counts when the line talks to you (names you, or answers you), since models also tag questions meant for another guest.
+    talks_to_you = bool(user) and (re.search(rf"\b{re.escape(user)}\b", text, re.I) is not None
+                                   or bool(transcript) and transcript[-1]["name"] == user)
+    to_you = bool(user) and phase != "close" and (asks_user(text, user)
+                                                  or bool(talks_to_you and re.search(r"\[\s*handover\s*\]", raw, re.I)))
     if not text:
         if choice.get("finish_reason") == "length":
             raise RuntimeError(f"{model} spent its whole reply budget thinking. Pick a faster model.")
@@ -613,7 +739,11 @@ def direct(req):
         "or whoever has a direct answer to the point on the table. The host steps in to move things on or to bring "
         "in someone quiet, not after every line. Keep it balanced over time, so nobody dominates.",
         "The intent must pick up a specific point that was already said and say how this person will respond to it "
-        "(agree and add, push back, answer, ask for the evidence). Never a new unrelated angle.",
+        "(agree and add, push back, answer, ask for the evidence). Never a new unrelated angle, except when a thread is "
+        "spent: if two people have traded the same point back and forth, pick the host or someone else and make the intent "
+        "close it and open a fresh, concrete angle on the topic.",
+        "The show should be lively and give listeners what the topic promises. If the topic is a request, such as cheering "
+        "someone up, the intents deliver it (stories, jokes, ideas they can use) instead of debating it.",
         "The intent is about the substance of today's topic. Never tell someone to talk about their job, company, "
         "industry or past unless the topic itself is about that: their background shows in their attitude and how "
         "they think, not in what they talk about.",
@@ -728,11 +858,14 @@ def invite(req):
             "First look through this library of ready-made characters. Use one only if it truly fits the topic, by returning "
             '{"template": "<its id>"}:',
             lib,
+            "First work out what this episode is for: a request (cheer someone up, help them decide, teach them something), a fun "
+            "conversation, a debate or an explainer. Cast for that, and make the cast's attitudes, energy, speed and style fit it. "
+            "An upbeat or comedy topic needs funny, warm, quick people (speed 0 to 2), not solemn or melancholy ones.",
             "Wherever none fits, write a whole new character: a vivid, specific person with a real stake in this topic, not a job title. "
-            "Bring different angles and at least one who will disagree with the others; do not repeat a profession, attitude or voice "
-            "already in the cast. New characters have these fields:",
+            "Bring different angles and real chemistry. Add someone who disagrees only when the topic is genuinely contested. Do not repeat "
+            "a profession, attitude or voice already in the cast. New characters have these fields:",
             '{"name": "<first name, with a title only if natural>", "role": "host|guest", "gender": "female|male", "voice": "<exactly one name from the voice list>", '
-            f'"attitude": "<one of: {", ".join(ATTITUDES)}>", "persona": "<2 to 3 sentences: who they are, what they believe about this topic, one specific experience>", '
+            f'"attitude": "<one of: {", ".join(ATTITUDES)}>", "persona": "<3 to 4 sentences: who they are, what they believe about this topic, and two or three different specific experiences or stories they can draw on>", '
             '"style": "<a short phrase on how they talk>", "speed": <-2 to 2>, "expr": <0 to 3>, '
             '"longest": <0, 60, 120 or 180: how long they may talk at a stretch; give 120 to people who explain or tell stories, 0 to quick talkers>}',
             "Choose each voice to suit the person (gender, age, energy). Never reuse a voice. Voices marked novelty are for fantasy or role-play topics only. Voices:",

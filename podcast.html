@@ -232,7 +232,7 @@
       <h1>Phonon Podcast</h1>
       <p>AI characters talk it out · voices run on this computer</p>
     </div>
-    <nav class="tabs"><a href="/" class="on">Podcast</a><a href="/speak">Speak</a></nav>
+    <nav class="tabs"><a href="/" class="on">Podcast</a><a href="/casts">Casts</a><a href="/speak">Speak</a></nav>
   </header>
 
   <div class="grid">
@@ -270,7 +270,7 @@
         <button class="btn invite" id="inviteBtn" title="The AI casts whole characters for this topic">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9L12 2.5Zm6.5 12l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9.9-2.6Z"/></svg>Invite guests with AI
         </button>
-        <span class="help">Click a character to edit their voice, attitude, speed and personality. Not finding the right guest? Let the AI cast them for your topic.</span>
+        <span class="help">Click a character to edit their voice, attitude, speed and personality. Not finding the right guest? Let the AI cast them for your topic. To manage everyone you have made or had on, and to save lineups, open <a href="/casts" style="color:var(--accent)">Casts</a>.</span>
       </div>
 
       <div class="pane" data-pane="settings" hidden>
@@ -299,6 +299,10 @@
             <label class="f">Provider<select id="provider"></select></label>
             <label class="f">Model<select id="llmModel"></select></label>
           </div>
+          <label class="f" id="customModelRow" hidden>Model ID <span class="help" id="customModelInfo"></span>
+            <input type="text" id="customModel" list="modelList" maxlength="120" spellcheck="false" autocomplete="off" placeholder="Search, or paste an ID such as anthropic/claude-haiku-5.5">
+            <datalist id="modelList"></datalist>
+          </label>
           <label class="f"><span><span id="keyLabel">API key</span> <span class="help" id="keyState"></span></span>
             <div class="row" style="align-items:center">
               <input type="password" id="apiKey" autocomplete="off" spellcheck="false">
@@ -392,9 +396,24 @@ let state = null, status = null, catalog = [], ttsModels = [];
 let saveTimer = null;
 function save() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => post("/api/podcast/state", state).catch(() => {}), 500);
+  saveTimer = setTimeout(() => { saveTimer = null; post("/api/podcast/state", state).catch(() => {}); }, 500);
   renderNow();
 }
+// The Casts page edits the same state: send any unsaved change on the way out, and pick up its changes when you come back.
+window.addEventListener("pagehide", () => {
+  if (saveTimer === null) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  navigator.sendBeacon("/api/podcast/state", new Blob([JSON.stringify(state)], { type: "application/json" }));
+});
+window.addEventListener("focus", async () => {
+  if (!state || show.running || saveTimer !== null || !$("editor").hidden) return;
+  const st = await fetch("/api/podcast/state").then((r) => r.json()).catch(() => null);
+  if (!st || show.running || saveTimer !== null) return;
+  state = st.state; status = st.status;
+  state.characters = state.characters.map(normalize);
+  state.myTemplates = (state.myTemplates || []).map(normalize);
+  renderEpisode(); renderCast(); renderSettings(); renderKey(); renderNow(); renderBoxHint();
+});
 const cast = () => state.characters.filter((c) => c.name.trim());
 // You: a real person at the table who runs the show. You join in from the studio box, typed or spoken,
 // your lines are never voiced, and you are never one of the AI characters.
@@ -521,14 +540,48 @@ function renderSettings() {
   $("provider").innerHTML = status.providers.map((p) => `<option value="${p.id}">${esc(p.label)}</option>`).join("");
   if (!status.providers.some((p) => p.id === s.provider)) s.provider = status.providers[0].id;
   $("provider").value = s.provider;
-  $("provider").onchange = () => { s.provider = $("provider").value; save(); renderSettings(); renderKey(); };
-  const models = prov().models;
-  $("llmModel").innerHTML = models.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join("");
-  if (!models.some((m) => m.id === s.llmModel)) s.llmModel = models[0].id;
-  $("llmModel").value = s.llmModel;
-  $("llmModel").onchange = () => { s.llmModel = $("llmModel").value; save(); };
+  $("provider").onchange = () => { s.provider = $("provider").value; s.llmModel = prov().models[0].id; save(); renderSettings(); renderKey(); };
+  // Some providers (OpenRouter) take any model ID: the list holds a few picks and "Other model" opens a search over all of them.
+  const p = prov(), models = p.models, OTHER = "__other";
+  const custom = p.anyModel && s.llmModel && !models.some((m) => m.id === s.llmModel);
+  $("llmModel").innerHTML = models.map((m) => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join("")
+    + (p.anyModel ? `<option value="${OTHER}">Other ${esc(p.label)} model…</option>` : "");
+  if (!custom && !models.some((m) => m.id === s.llmModel)) s.llmModel = models[0].id;
+  $("llmModel").value = custom ? OTHER : s.llmModel;
+  $("customModelRow").hidden = !custom;
+  $("customModel").value = custom ? s.llmModel : "";
+  if (custom) loadModelList(p.id);
+  $("llmModel").onchange = () => {
+    if ($("llmModel").value === OTHER) {
+      $("customModelRow").hidden = false; loadModelList(p.id); $("customModel").focus();
+    } else { s.llmModel = $("llmModel").value; $("customModelRow").hidden = true; save(); }
+  };
+  $("customModel").oninput = () => {
+    const v = $("customModel").value.trim();
+    if (/^[~A-Za-z0-9._\-/:]{1,120}$/.test(v)) { s.llmModel = v; save(); }
+    showModelInfo(v);
+  };
   $("ttsModel").innerHTML = ttsModels.map((m) => `<option value="${m.id}">${esc(m.name)} · ${m.variant}</option>`).join("");
   $("ttsModel").value = s.ttsModel; $("ttsModel").onchange = () => { s.ttsModel = $("ttsModel").value; save(); };
+}
+
+// The full model list of a provider that has one, fetched once per page load for the "Other model" search.
+const modelLists = {};
+async function loadModelList(pid) {
+  if (!modelLists[pid]) {
+    $("customModelInfo").textContent = "Loading the model list…";
+    modelLists[pid] = await fetch(`/api/podcast/models?provider=${encodeURIComponent(pid)}`).then((r) => r.json()).catch(() => []);
+  }
+  const list = modelLists[pid];
+  $("modelList").innerHTML = list.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}${m.price ? ` · $${m.price[0]} / $${m.price[1]} per M tokens` : ""}</option>`).join("");
+  showModelInfo($("customModel").value.trim());
+}
+function showModelInfo(id) {
+  const list = modelLists[prov().id] || [];
+  const m = list.find((x) => x.id === id);
+  $("customModelInfo").textContent = !id ? (list.length ? `${list.length} models` : "")
+    : m ? `${m.name}${m.price ? ` · $${m.price[0]} in, $${m.price[1]} out per million tokens` : ""}${m.thinks ? " · always thinks first, so a little slower" : ""}`
+    : list.length ? "Not in the list. Check the ID on openrouter.ai/models" : "";
 }
 
 // The selected AI provider, and whether its key is saved.

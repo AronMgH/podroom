@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phonon Casts</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23cde34a'/%3E%3Cg fill='%2311140a'%3E%3Crect x='7' y='13' width='3' height='6' rx='1.5'/%3E%3Crect x='12' y='9' width='3' height='14' rx='1.5'/%3E%3Crect x='17' y='6' width='3' height='20' rx='1.5'/%3E%3Crect x='22' y='11' width='3' height='10' rx='1.5'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { padding: 22px 22px 30px; }
+  .wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  .help { font-size: 12px; color: var(--faint); font-weight: 400; letter-spacing: normal; text-transform: none; }
+  .avatar {
+    width: 38px; height: 38px; border-radius: 50%; flex: none; display: grid; place-items: center;
+    background: radial-gradient(100% 100% at 30% 25%, color-mix(in srgb, var(--c) 55%, #fff), var(--c) 60%);
+    color: #0b0b0d; font-weight: 700; font-size: 15px;
+  }
+
+  /* toolbar */
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 14px 16px; }
+  .toolbar input[type=text] { flex: 1 1 240px; border-radius: 999px; padding-left: 16px; }
+  .toolbar .seg { flex: 0 1 auto; }
+  .toolbar .status { font-size: 13px; color: var(--muted); width: 100%; min-height: 1.2em; }
+  .toolbar .status.err { color: var(--danger); }
+
+  /* sections */
+  section.block { padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .bh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .bh h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .bh .n { font-size: 11px; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); text-align: center; font-weight: 600; }
+  .bh .sp { flex: 1; }
+  .bh .help { width: 100%; }
+  .empty-note { font-size: 13px; color: var(--faint); padding: 6px 2px; }
+
+  /* character cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; }
+  .pc {
+    display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 20px; min-width: 0;
+    background: rgba(255, 255, 255, .03); border: 1px solid var(--edge); transition: background .15s, border-color .15s;
+  }
+  .pc:hover { background: var(--glass); border-color: var(--edge-2); }
+  .pc .top { display: flex; gap: 11px; align-items: center; min-width: 0; }
+  .pc .nm { font-weight: 600; font-size: 14px; display: flex; gap: 7px; align-items: baseline; min-width: 0; }
+  .pc .nm span.t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc .role { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--c); flex: none; }
+  .pc .sub { font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc .info { flex: 1; min-width: 0; }
+  .pc .persona { font-size: 13px; line-height: 1.5; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+  .pc .meta { font-size: 11px; color: var(--faint); }
+  .pc .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+    color: var(--accent); background: var(--accent-soft); }
+  .pc .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+  .pc .acts .btn { padding: 6px 11px; font-size: 12px; }
+  .pc .acts .btn.icon { padding: 6px; }
+
+  /* saved casts */
+  .lineups { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+  .lu { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 20px; background: rgba(255, 255, 255, .03); border: 1px solid var(--edge); }
+  .lu .top { display: flex; gap: 10px; align-items: center; }
+  .lu .top b { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .faces { display: flex; padding-left: 6px; }
+  .faces .avatar { width: 26px; height: 26px; font-size: 11px; border: 2px solid #141517; margin-left: -6px; }
+  .lu .who { font-size: 12px; color: var(--faint); }
+  .lu .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .lu .acts .btn { padding: 6px 11px; font-size: 12px; }
+
+  /* editor dialog */
+  .overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(4, 4, 6, .66); animation: fade .15s ease; }
+  @keyframes fade { from { opacity: 0; } }
+  .dialog {
+    width: min(620px, 100%); max-height: calc(100vh - 40px); display: flex; flex-direction: column; overflow: hidden;
+    background: linear-gradient(180deg, rgb(32, 33, 36), rgb(21, 22, 24)); backdrop-filter: none; -webkit-backdrop-filter: none;
+    animation: pop .18s ease;
+  }
+  @keyframes pop { from { transform: translateY(8px) scale(.98); opacity: 0; } }
+  .dialog .dh { display: flex; align-items: center; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid var(--edge);
+    background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--c) 16%, transparent), transparent 55%); }
+  .dialog .dh .avatar { width: 46px; height: 46px; font-size: 18px; box-shadow: 0 0 26px color-mix(in srgb, var(--c) 45%, transparent); }
+  .dialog .dh input { font-size: 17px; font-weight: 600; }
+  .dialog .dh select { width: auto; flex: none; }
+  .dialog .db { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+  .dialog .df { display: flex; gap: 8px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--edge); }
+  .dialog .df .sp { flex: 1; }
+  .dialog .where { font-size: 12px; color: var(--faint); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .voice-row { display: flex; gap: 8px; }
+  .voice-row select { flex: 1; }
+
+  @media (max-width: 560px) {
+    body { padding: 14px 16px 24px; }
+    header.top nav.tabs { margin-left: 0; width: 100%; }
+    nav.tabs a { flex: 1; text-align: center; }
+    .grid2 { grid-template-columns: 1fr; }
+    .cards, .lineups { grid-template-columns: 1fr; }
+    .dialog .dh { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="2" y="8" width="2.4" height="4" rx="1.2"/><rect x="6.2" y="5" width="2.4" height="10" rx="1.2"/>
+        <rect x="10.4" y="2" width="2.4" height="16" rx="1.2"/><rect x="14.6" y="6.5" width="2.4" height="7" rx="1.2"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Casts</h1>
+      <p>Everyone who has been on the show, your saved characters and lineups</p>
+    </div>
+    <nav class="tabs"><a href="/">Podcast</a><a href="/casts" class="on">Casts</a><a href="/speak">Speak</a></nav>
+  </header>
+
+  <div class="card toolbar">
+    <input type="text" id="search" placeholder="Search by name, attitude, voice or personality" autocomplete="off">
+    <div class="seg" id="filterSeg"></div>
+    <button class="btn primary" id="newChar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New character
+    </button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <section class="card block" data-kind="show">
+    <div class="bh"><h2>On the show now</h2><span class="n" id="nShow">0</span><span class="sp"></span>
+      <button class="btn" id="saveLineup">Save as a cast</button>
+      <span class="help">The characters in the next episode. Changes here show up on the Podcast page.</span></div>
+    <div class="cards" id="showCards"></div>
+  </section>
+
+  <section class="card block" data-kind="casts">
+    <div class="bh"><h2>Saved casts</h2><span class="n" id="nCasts">0</span>
+      <span class="help">Lineups you can bring back in one click. Loading one replaces who is on the show.</span></div>
+    <div class="lineups" id="lineups"></div>
+  </section>
+
+  <section class="card block" data-kind="mine">
+    <div class="bh"><h2>My characters</h2><span class="n" id="nMine">0</span>
+      <span class="help">Your own library. They also appear under “Add character” on the Podcast page, and the AI casting director can reuse them.</span></div>
+    <div class="cards" id="mineCards"></div>
+  </section>
+
+  <section class="card block" data-kind="past">
+    <div class="bh"><h2>From past episodes</h2><span class="n" id="nPast">0</span><span class="sp"></span>
+      <button class="btn ghost" id="toggleHidden" hidden></button>
+      <span class="help">Everyone who has been on an episode, as they were in their latest one. Save the ones worth keeping.</span></div>
+    <div class="cards" id="pastCards"></div>
+  </section>
+
+  <section class="card block" data-kind="builtin">
+    <div class="bh"><h2>Built-in templates</h2><span class="n" id="nBuiltin">0</span>
+      <span class="help">Ready-made characters. Copy one to your characters to change it.</span></div>
+    <div class="cards" id="builtinCards"></div>
+  </section>
+</div>
+
+<div class="overlay" id="editor" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const COLORS = ["#cde34a", "#ff7a7a", "#4fd1c5", "#f5a623", "#8fa5ff", "#f472b6", "#b794f6", "#5ec8ff"];
+const ACCENTS = { "en-us": "American", "en-gb": "British", characters: "Characters" };
+const LENGTHS = [["short", "Short"], ["medium", "Medium"], ["long", "Long"]];
+const SPEEDS = [[-2, "Very slow"], [-1, "Slow"], [0, "Normal"], [1, "Fast"], [2, "Very fast"]];
+const EXPRS = [[0, "Calm"], [1, "Natural"], [2, "Lively"], [3, "Dramatic"]];
+const LONGEST = [[0, "Short turns only"], [60, "Up to 1 minute"], [120, "Up to 2 minutes"], [180, "Up to 3 minutes"]];
+const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.52.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5Z"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const post = (url, body, signal) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+const store = {
+  get(k, d) { try { return localStorage.getItem("phonon.casts." + k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("phonon.casts." + k, v); } catch {} },
+};
+
+let state = null, status = null, catalog = [], past = [];
+let filter = store.get("filter", "all"), query = "", showHidden = false;
+
+// ===== state & saving ======================================================================
+// The Podcast page keeps the same state file, so this page saves straight away and reloads it when you come back.
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flush, 400);
+}
+function flush() {
+  if (saveTimer === null) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  return post("/api/podcast/state", state).catch(() => setStatus("Could not save. Is the server running?", true));
+}
+window.addEventListener("pagehide", () => { if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; navigator.sendBeacon("/api/podcast/state", new Blob([JSON.stringify(state)], { type: "application/json" })); } });
+window.addEventListener("focus", async () => { if (saveTimer === null && $("editor").hidden) { await load(); render(); } });
+
+function normalize(c) {
+  return { id: c.id || "c" + Math.random().toString(36).slice(2, 9), name: c.name || "", role: c.role || "guest", voice: c.voice || "",
+    attitude: c.attitude || "balanced", persona: c.persona || "", style: c.style || "",
+    speed: Number.isInteger(c.speed) ? c.speed : 0, expr: Number.isInteger(c.expr) ? c.expr : 1, length: c.length || "",
+    longest: [60, 120, 180].includes(c.longest) ? c.longest : 0 };
+}
+const newId = (p = "c") => p + Date.now() + Math.random().toString(36).slice(2, 5);
+const copyOf = (c, prefix) => normalize({ ...c, id: newId(prefix) });
+const attitudeLabel = (id) => status.attitudes.find((a) => a.id === id)?.label || "Balanced";
+const speedLabel = (v) => SPEEDS.find((s) => s[0] === v)?.[1] || "Normal";
+const face = (name, color, extra = "") => `<span class="avatar" style="--c:${color}" ${extra}>${esc((name || "?")[0].toUpperCase())}</span>`;
+const colorFor = (name) => { let h = 0; for (const ch of name || "?") h = (h * 31 + ch.charCodeAt(0)) >>> 0; return COLORS[h % COLORS.length]; };
+const lower = (s) => (s || "").trim().toLowerCase();
+const onShow = (name) => state.characters.some((c) => lower(c.name) === lower(name));
+const inMine = (name) => state.myTemplates.some((c) => lower(c.name) === lower(name));
+function uniqueName(name, list) {
+  const taken = new Set(list.map((c) => lower(c.name)));
+  if (!taken.has(lower(name))) return name;
+  for (let i = 2; ; i++) if (!taken.has(lower(`${name} ${i}`))) return `${name} ${i}`;
+}
+function setStatus(msg, err) { $("status").textContent = msg || ""; $("status").className = "status" + (err ? " err" : ""); }
+
+async function load() {
+  const [st, people] = await Promise.all([
+    fetch("/api/podcast/state").then((r) => r.json()),
+    fetch("/api/podcast/people").then((r) => r.json()).catch(() => []),
+  ]);
+  state = st.state; status = st.status; past = people;
+  state.characters = (state.characters || []).map(normalize);
+  state.myTemplates = (state.myTemplates || []).map(normalize);
+  state.casts = (state.casts || []).filter((l) => l && Array.isArray(l.characters));
+  state.hiddenPast = state.hiddenPast || [];
+}
+
+async function init() {
+  const [voices] = await Promise.all([fetch("/api/voices").then((r) => r.json()).catch(() => []), load()]);
+  catalog = voices.filter((v) => v.language === "en");
+  seg($("filterSeg"), [["all", "All"], ["show", "On the show"], ["casts", "Casts"], ["mine", "Mine"], ["past", "Past"], ["builtin", "Built-in"]], filter, (v) => { filter = v; store.set("filter", v); render(); });
+  render();
+}
+
+function seg(el, options, value, onPick) {
+  el.innerHTML = "";
+  for (const [v, label] of options) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.setAttribute("aria-pressed", String(v === value));
+    b.onclick = () => { onPick(v); seg(el, options, v, onPick); };
+    el.appendChild(b);
+  }
+}
+
+// ===== rendering =============================================================================
+const matches = (c) => !query || [c.name, c.role, attitudeLabel(c.attitude), c.voice, c.persona, c.style, c.lastShow]
+  .some((x) => lower(x).includes(query));
+
+function card(c, kind, idx) {
+  const color = colorFor(c.name);
+  const el = document.createElement("div");
+  el.className = "pc"; el.style.setProperty("--c", color);
+  const bits = [attitudeLabel(c.attitude), c.voice || "Default voice", c.speed ? speedLabel(c.speed) : ""].filter(Boolean);
+  const badges = [];
+  if (kind !== "show" && onShow(c.name)) badges.push("On the show");
+  if ((kind === "past" || kind === "builtin") && inMine(c.name)) badges.push("Saved");
+  const meta = kind === "past"
+    ? `Last on ${esc(c.lastShow || "an episode")}${c.lastAt ? " · " + esc(c.lastAt.slice(0, 10)) : ""} · ${c.episodes} episode${c.episodes === 1 ? "" : "s"}` : "";
+  el.innerHTML = `
+    <div class="top">${face(c.name, color)}
+      <div class="info"><div class="nm"><span class="t">${esc(c.name || "Unnamed")}</span><span class="role">${cap(c.role)}</span></div>
+      <div class="sub">${esc(bits.join(" · "))}</div></div>
+      <button class="btn ghost icon play" title="Hear this voice">${ICON_PLAY}</button>
+    </div>
+    ${c.persona ? `<p class="persona" title="${esc(c.persona)}">${esc(c.persona)}</p>` : ""}
+    ${meta ? `<div class="meta">${meta}</div>` : ""}
+    ${badges.length ? `<div class="badges">${badges.map((b) => `<span class="badge">${b}</span>`).join("")}</div>` : ""}
+    <div class="acts"></div>`;
+  el.querySelector(".play").onclick = (e) => previewVoice(c, e.currentTarget);
+  const acts = el.querySelector(".acts");
+  const act = (label, fn, cls = "") => { const b = document.createElement("button"); b.className = "btn " + cls; b.innerHTML = label; b.onclick = fn; acts.appendChild(b); };
+
+  if (kind === "show") {
+    act("Edit", () => openEditor(c, "show"));
+    if (!inMine(c.name)) act("Save to mine", () => saveToMine(c));
+    act("Take off the show", () => removeFromShow(idx), "ghost danger");
+  } else if (kind === "mine") {
+    act("Edit", () => openEditor(c, "mine"));
+    if (!onShow(c.name)) act("Add to show", () => addToShow(c));
+    act("Duplicate", () => { state.myTemplates.splice(idx + 1, 0, copyOf({ ...c, name: uniqueName(c.name + " copy", state.myTemplates) }, "my")); save(); render(); }, "ghost");
+    act(ICON_TRASH, () => { if (confirm(`Delete ${c.name} from your characters? Episodes they were in are kept.`)) { state.myTemplates.splice(idx, 1); save(); render(); setStatus(`Deleted ${c.name}.`); } }, "ghost icon danger");
+  } else if (kind === "past") {
+    if (!onShow(c.name)) act("Add to show", () => addToShow(c));
+    if (!inMine(c.name)) act("Save to mine", () => saveToMine(c));
+    const hidden = state.hiddenPast.includes(lower(c.name));
+    act(hidden ? "Unhide" : "Hide", () => {
+      state.hiddenPast = hidden ? state.hiddenPast.filter((n) => n !== lower(c.name)) : [...state.hiddenPast, lower(c.name)];
+      save(); render();
+    }, "ghost");
+  } else if (kind === "builtin") {
+    if (!onShow(c.name)) act("Add to show", () => addToShow(c));
+    act(inMine(c.name) ? "Copy again" : "Copy to mine", () => saveToMine(c));
+  }
+  return el;
+}
+
+function fill(boxId, list, kind, emptyText) {
+  const box = $(boxId); box.innerHTML = "";
+  const shown = list.filter(({ c }) => matches(c));
+  for (const { c, i } of shown) box.appendChild(card(c, kind, i));
+  if (!shown.length) box.innerHTML = `<div class="empty-note">${query ? "Nobody here matches your search." : emptyText}</div>`;
+  return shown.length;
+}
+
+function render() {
+  for (const s of document.querySelectorAll("section.block")) s.hidden = filter !== "all" && s.dataset.kind !== filter;
+  const idx = (arr) => arr.map((c, i) => ({ c, i }));
+  $("nShow").textContent = fill("showCards", idx(state.characters), "show", "Nobody yet. Add someone from below.");
+  $("nMine").textContent = fill("mineCards", idx(state.myTemplates), "mine", "No saved characters yet. Use “Save to mine” on anyone, or make a new one.");
+  const hidden = new Set(state.hiddenPast);
+  const pastList = past.filter((c) => showHidden || !hidden.has(lower(c.name))).map((c) => ({ c: { ...normalize(c), episodes: c.episodes, lastShow: c.lastShow, lastAt: c.lastAt }, i: -1 }));
+  $("nPast").textContent = fill("pastCards", pastList, "past", "No episodes yet.");
+  const nHidden = past.filter((c) => hidden.has(lower(c.name))).length;
+  $("toggleHidden").hidden = !nHidden;
+  $("toggleHidden").textContent = showHidden ? "Hide hidden" : `Show hidden (${nHidden})`;
+  $("nBuiltin").textContent = fill("builtinCards", idx(status.characterTemplates.map(normalize)), "builtin", "");
+  renderLineups();
+}
+
+function renderLineups() {
+  const box = $("lineups"); box.innerHTML = "";
+  const list = state.casts.filter((l) => !query || lower(l.name).includes(query) || l.characters.some(matches));
+  $("nCasts").textContent = list.length;
+  if (!list.length) { box.innerHTML = `<div class="empty-note">${query ? "No saved cast matches your search." : "No saved casts yet. Put a lineup together on the show and press “Save as a cast”."}</div>`; return; }
+  for (const l of list) {
+    const el = document.createElement("div");
+    el.className = "lu";
+    el.innerHTML = `
+      <div class="top"><b title="${esc(l.name)}">${esc(l.name)}</b>
+        <div class="faces">${l.characters.map((c) => face(c.name, colorFor(c.name), `title="${esc(c.name)}"`)).join("")}</div></div>
+      <div class="who">${esc(l.characters.map((c) => `${c.name} (${c.role})`).join(", "))}</div>
+      <div class="acts">
+        <button class="btn primary load">Load into show</button>
+        <button class="btn ghost upd" title="Replace this cast with whoever is on the show now">Update from show</button>
+        <button class="btn ghost ren">Rename</button>
+        <button class="btn ghost icon danger del" title="Delete this cast">${ICON_TRASH}</button>
+      </div>`;
+    el.querySelector(".load").onclick = () => {
+      if (!confirm(`Replace who is on the show with “${l.name}”?`)) return;
+      state.characters = l.characters.map((c) => copyOf(c, "c"));
+      save(); render(); setStatus(`Loaded “${l.name}”. ${l.characters.length} characters are on the show.`);
+    };
+    el.querySelector(".upd").onclick = () => {
+      if (!state.characters.length) return setStatus("Nobody is on the show to save.", true);
+      if (!confirm(`Overwrite “${l.name}” with the ${state.characters.length} characters on the show now?`)) return;
+      l.characters = state.characters.map((c) => copyOf(c, "k")); save(); render(); setStatus(`Updated “${l.name}”.`);
+    };
+    el.querySelector(".ren").onclick = () => {
+      const name = prompt("Name this cast", l.name);
+      if (name && name.trim()) { l.name = name.trim().slice(0, 80); save(); render(); }
+    };
+    el.querySelector(".del").onclick = () => {
+      if (!confirm(`Delete the saved cast “${l.name}”? The characters in it are not deleted.`)) return;
+      state.casts = state.casts.filter((x) => x !== l); save(); render();
+    };
+    box.appendChild(el);
+  }
+}
+
+// ===== actions ================================================================================
+function addToShow(c) {
+  state.characters.push(copyOf({ ...c, name: uniqueName(c.name, state.characters) }, "c"));
+  save(); render(); setStatus(`${c.name} is on the show.`);
+}
+function saveToMine(c) {
+  const t = copyOf(c, "my");
+  const i = state.myTemplates.findIndex((m) => lower(m.name) === lower(t.name));
+  if (i >= 0) {
+    if (!confirm(`You already have a character called ${t.name}. Replace it with this version?`)) return;
+    state.myTemplates[i] = t;
+  } else state.myTemplates.push(t);
+  save(); render(); setStatus(`Saved ${t.name} to your characters.`);
+}
+function removeFromShow(i) {
+  const c = state.characters[i];
+  if (state.characters.length <= 2) return setStatus("A show needs at least two characters. Add someone else first.", true);
+  if (!confirm(`Take ${c.name || "this character"} off the show?${inMine(c.name) ? "" : " They are not in your characters, so save them first if you want them later."}`)) return;
+  state.characters.splice(i, 1); save(); render();
+}
+$("newChar").onclick = () => {
+  const c = normalize({ id: newId("my"), name: uniqueName("New character", state.myTemplates), role: "guest" });
+  state.myTemplates.unshift(c); save(); render();
+  openEditor(c, "mine");
+};
+$("saveLineup").onclick = () => {
+  if (state.characters.length < 2) return setStatus("Put at least two characters on the show first.", true);
+  const name = prompt("Name this cast", state.show || "My cast");
+  if (!name || !name.trim()) return;
+  state.casts.unshift({ id: newId("k"), name: name.trim().slice(0, 80), characters: state.characters.map((c) => copyOf(c, "k")) });
+  save(); render(); setStatus(`Saved the cast “${name.trim()}”.`);
+};
+$("toggleHidden").onclick = () => { showHidden = !showHidden; render(); };
+$("search").oninput = (e) => { query = lower(e.target.value); render(); };
+
+// ===== editor ===================================================================================
+function voiceOptions(selected) {
+  const groups = {};
+  for (const v of catalog) {
+    const g = v.locale === "characters" ? "Characters" : `${cap(v.gender) || "Other"} · ${ACCENTS[v.locale] || v.locale}`;
+    (groups[g] ||= []).push(v);
+  }
+  const order = Object.keys(groups).sort((a, b) => (a === "Characters") - (b === "Characters") || a.localeCompare(b));
+  let html = `<option value=""${selected ? "" : " selected"}>Model default voice</option>`;
+  for (const g of order) {
+    html += `<optgroup label="${g}">` + groups[g].map((v) =>
+      `<option value="${esc(v.name)}"${v.name === selected ? " selected" : ""} title="${esc(v.description)}">${esc(v.name)}${v.age ? " — " + esc(v.age) : ""}</option>`).join("") + "</optgroup>";
+  }
+  return html;
+}
+const attitudeOptions = (sel) => status.attitudes.map((a) => `<option value="${a.id}"${a.id === sel ? " selected" : ""}>${esc(a.label)}</option>`).join("");
+const longestOptions = (sel) => LONGEST.map(([v, l]) => `<option value="${v}"${v === sel ? " selected" : ""}>${l}</option>`).join("");
+const lengthOptions = (sel) => [["", "Episode default"], ...LENGTHS].map(([v, l]) => `<option value="${v}"${v === sel ? " selected" : ""}>${l}</option>`).join("");
+
+// Edits the character in place: one on the show, or one of yours.
+function openEditor(c, where) {
+  const list = where === "show" ? state.characters : state.myTemplates;
+  const color = colorFor(c.name);
+  const ov = $("editor");
+  ov.innerHTML = `
+    <div class="dialog glass" role="dialog" aria-modal="true" aria-label="Edit character" style="--c:${color}">
+      <div class="dh">
+        ${face(c.name, color, 'id="edAvatar"')}
+        <input type="text" class="name" maxlength="40" placeholder="Name" value="${esc(c.name)}">
+        <select class="role"><option value="host">Host</option><option value="guest">Guest</option></select>
+      </div>
+      <div class="db">
+        <span class="where">${where === "show" ? "On the show now. Changes apply to the next episode." : "In your characters. Characters already on the show keep their own copy."}</span>
+        <label class="f">Voice
+          <div class="voice-row">
+            <select class="voice">${voiceOptions(c.voice)}</select>
+            <button class="btn icon preview" title="Hear this voice">${ICON_PLAY}</button>
+          </div>
+        </label>
+        <div class="grid2">
+          <label class="f">Attitude<select class="attitude">${attitudeOptions(c.attitude)}</select></label>
+          <label class="f">Talkativeness<select class="length">${lengthOptions(c.length)}</select></label>
+        </div>
+        <label class="f">Longest stretch at the mic<select class="longest">${longestOptions(c.longest)}</select></label>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Speed</span><div class="seg speed"></div></div>
+        <div style="display:flex;flex-direction:column;gap:7px"><span class="label">Expressiveness</span><div class="seg expr"></div></div>
+        <label class="f">Personality &amp; background<textarea class="persona" rows="5" maxlength="1200" placeholder="Who are they? What do they believe, know, care about? A few stories they can tell.">${esc(c.persona)}</textarea></label>
+        <label class="f">Speaking style<input type="text" class="style" maxlength="200" placeholder="e.g. fast, sarcastic, uses sports metaphors" value="${esc(c.style)}"></label>
+      </div>
+      <div class="df">
+        <span class="sp"></span>
+        <button class="btn primary done">Done</button>
+      </div>
+    </div>`;
+  const q = (s) => ov.querySelector(s);
+  q(".role").value = c.role;
+  q(".name").oninput = (e) => {
+    const v = e.target.value;
+    if (list.some((x) => x !== c && lower(x.name) === lower(v) && v.trim())) { e.target.setCustomValidity("taken"); return setStatus(`Someone here is already called ${v.trim()}.`, true); }
+    e.target.setCustomValidity(""); setStatus("");
+    c.name = v; $("edAvatar").textContent = (v || "?")[0].toUpperCase(); save();
+  };
+  q(".role").onchange = (e) => { c.role = e.target.value; save(); };
+  q(".voice").onchange = (e) => { c.voice = e.target.value; save(); };
+  q(".attitude").onchange = (e) => { c.attitude = e.target.value; save(); };
+  q(".length").onchange = (e) => { c.length = e.target.value; save(); };
+  q(".longest").onchange = (e) => { c.longest = Number(e.target.value); save(); };
+  q(".persona").oninput = (e) => { c.persona = e.target.value; save(); };
+  q(".style").oninput = (e) => { c.style = e.target.value; save(); };
+  seg(q(".speed"), SPEEDS, c.speed, (v) => { c.speed = v; save(); });
+  seg(q(".expr"), EXPRS, c.expr, (v) => { c.expr = v; save(); });
+  q(".preview").onclick = (e) => previewVoice(c, e.currentTarget);
+  const close = () => { ov.hidden = true; ov.innerHTML = ""; if (!c.name.trim()) c.name = uniqueName("Unnamed", list); flush(); render(); };
+  q(".done").onclick = close;
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+  ov.onkeydown = (e) => { if (e.key === "Escape") close(); };
+  ov.hidden = false;
+  q(".name").focus();
+}
+
+// ===== voice preview =============================================================================
+let ctx = null, previewing = null;
+async function previewVoice(c, btn) {
+  if (previewing) previewing.abort();
+  btn.disabled = true;
+  try {
+    ctx ||= new AudioContext({ sampleRate: 24000 });
+    await ctx.resume();
+    const ctl = previewing = new AbortController();
+    const res = await post("/api/stream", { text: `Hi, I'm ${c.name || "your new character"}. This is how I sound.`, voice: c.voice, speed: c.speed, expr: c.expr,
+      model: state.settings.ttsModel, lang: "en" }, ctl.signal);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "speech failed");
+    const rate = Number(res.headers.get("X-Sample-Rate")) || 24000;
+    const reader = res.body.getReader();
+    let leftover = new Uint8Array(0), t = ctx.currentTime + 0.05;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const bytes = new Uint8Array(leftover.length + value.length);
+      bytes.set(leftover); bytes.set(value, leftover.length);
+      const usable = bytes.length - (bytes.length % 4);
+      leftover = bytes.slice(usable);
+      if (!usable) continue;
+      const pcm = new Float32Array(bytes.buffer.slice(0, usable));
+      const buf = ctx.createBuffer(1, pcm.length, rate); buf.copyToChannel(pcm, 0);
+      const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
+      t = Math.max(t, ctx.currentTime); src.start(t); t += buf.duration;
+    }
+  } catch (e) { if (e.name !== "AbortError") setStatus(e.message, true); }
+  btn.disabled = false;
+}
+
+init().catch((e) => setStatus("Could not load: " + e.message, true));
+</script>
+</body>
+</html>
