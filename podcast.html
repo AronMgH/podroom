@@ -115,6 +115,8 @@
   .now h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now p { margin: 2px 0 0; font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .now .faces { display: flex; padding: 4px 0 0 8px; }
+  .now .part { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; padding: 4px 10px; border-radius: 999px; font-size: 12px;
+    color: var(--accent); background: var(--accent-soft); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
   .now .faces .avatar { width: 30px; height: 30px; font-size: 12px; border: 2px solid #141517; margin-left: -8px; }
   .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 20px; }
   .bar .meta { margin-left: auto; display: flex; gap: 16px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -252,7 +254,7 @@
     <!-- studio -->
     <section class="card studio">
       <div class="now">
-        <div class="t"><h2 id="nowShow"></h2><p id="nowTopic"></p></div>
+        <div class="t"><h2 id="nowShow"></h2><p id="nowTopic"></p><div class="part" id="nowPart" hidden></div></div>
         <div class="seg" id="viewSeg" style="flex:none;width:150px"></div>
       </div>
       <div class="bar">
@@ -420,7 +422,7 @@ $("setupBtn").onclick = () => setSetup($("grid").classList.contains("setup-close
 // A new episode: same guests, a blank topic and an empty transcript.
 function newEpisode() {
   show.turns = []; show.record = null; $("transcript").innerHTML = "";
-  state.topic = ""; save(); renderEpisode();
+  state.topic = ""; save(); renderEpisode(); renderPart();
   window.podroomShell?.setActive("");
   setSetup(true); $("topic").focus();
   setStatus("New episode: write a topic, check the guests, then press Start.");
@@ -447,7 +449,8 @@ async function openEpisode(id) {
     renderTurn(turn); turn.el.classList.remove("queued");
   }
   window.podroomShell?.setActive(id);
-  setControls(); renderNow(); renderHead();
+  show.part = rec.planPart || 0;
+  setControls(); renderNow(); renderHead(); renderPart();
   const lines = show.turns.length;
   setStatus(`${lines} line${lines === 1 ? "" : "s"} so far. Press Resume to carry on for up to ${state.settings.minutes || 10} more minutes; the guests remember everything said.`);
 }
@@ -918,6 +921,7 @@ async function start() {
     show.turns = []; $("transcript").innerHTML = ""; show.reopen = false;
   }
   show.base = show.turns.length; show.baseTokens = resume ? show.record.tokens || 0 : 0;
+  show.part = show.firstPart = resume ? show.record.planPart || 0 : 0; show.partStart = 0;
   show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
   $("clock").textContent = "0:00"; show.signedOff = false;
   show.running = true; show.epoch++;
@@ -925,6 +929,8 @@ async function start() {
   if (resume) saveRecord(true); else newRecord();
   setSetup(false); // the stage gets the whole width while the show plays
   const ep = show.epoch;
+  if (!show.record.plan) requestPlan(ep); // the opening does not need it, so it never holds up the start
+  renderPart();
   setControls();
   try { await audio(); } catch (e) { return endShow(`Could not start audio: ${e.message}`, true); }
   // The voices warm up while the AI writes the opening line, so neither waits for the other.
@@ -1079,6 +1085,7 @@ async function chooseNext(phase, ep) {
     if (c && show.floor.secs - show.floor.used >= 12) return { speaker: c, floor: floorPlan() };
     show.floor = null;
   }
+  if (phase === "normal" && !last?.human && last?.name !== host.name && agendaNow()?.wrap) return { speaker: host, wantsCut: false };
   if (phase === "normal" && last?.human) {
     const f = parseFloor(last.text, people);
     if (f && grantFloor(f.who, f.secs, "you")) return { speaker: f.who, floor: floorPlan() };
@@ -1108,7 +1115,7 @@ async function chooseNext(phase, ep) {
     try {
       const res = await post("/api/podcast/next", {
         characters: people, show: state.show, topic: state.topic, user: you().name,
-        transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })),
+        transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })), agenda: agendaNow() || undefined,
         provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session,
       }, AbortSignal.timeout(bossed ? 20000 : 10000));
       const d = await res.json();
@@ -1126,6 +1133,53 @@ async function chooseNext(phase, ep) {
   }
   if (last.human && named(last.text).length === 1) return { speaker: named(last.text)[0] };
   return { speaker: pickNext(phase, "natural") };
+}
+
+// ===== run of show ======================================================================================
+// At the start of a new episode one AI call splits the topic into parts, each with points to cover and a
+// share of the time. The host is told which part the show is in, what it should cover and how long is left,
+// and when a part's time is up the host takes the next turn to move on. Parts are timed on the same clock
+// as the episode, so there is no AI call per line to check them. The plan is saved with the episode, so
+// Resume carries on from the part it reached.
+async function requestPlan(ep) {
+  await waitUntil(() => !alive(ep) || canCall());
+  if (!alive(ep)) return;
+  show.calls.push(performance.now());
+  try {
+    const res = await post("/api/podcast/plan", { characters: cast(), show: state.show, topic: state.topic, minutes: state.settings.minutes,
+      provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session });
+    const d = await res.json().catch(() => ({}));
+    if (!alive(ep) || !res.ok || !d.segments?.length) return; // without a plan the show runs as before
+    if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
+    show.record.plan = d.segments; show.record.planPart = 0; saveRecord();
+    show.part = show.firstPart = 0; show.partStart = plannedSecs();
+    renderPart();
+  } catch {}
+}
+// This session's seconds for part i: the parts still to come share the session's minutes, less the opening and sign-off.
+function partBudget(i) {
+  const plan = show.record?.plan || [], rest = plan.slice(show.firstPart);
+  const total = rest.reduce((n, x) => n + x.minutes, 0) || 1;
+  return (plan[i]?.minutes || 0) / total * Math.max(60, (state.settings.minutes || 10) * 60 - 40);
+}
+function agendaNow() {
+  const plan = show.record?.plan;
+  if (!show.running || !plan || show.part >= plan.length) return null;
+  const seg = plan[show.part], left = partBudget(show.part) - (plannedSecs() - show.partStart);
+  return { title: seg.title, points: seg.points, part: show.part + 1, parts: plan.length, next: plan[show.part + 1]?.title || "",
+    minsPart: Math.max(0, left / 60), minsShow: Math.max(0, timeLeft() / 60), wrap: left <= 0 && show.part < plan.length - 1 };
+}
+function nextPart() {
+  show.part++; show.partStart = plannedSecs();
+  show.record.planPart = show.part; saveRecord();
+  renderPart();
+}
+function renderPart() {
+  const plan = show.record?.plan, seg = plan?.[show.part ?? show.record?.planPart ?? 0];
+  $("nowPart").hidden = !seg;
+  if (!seg) return;
+  $("nowPart").textContent = `Part ${plan.indexOf(seg) + 1} of ${plan.length} · ${seg.title}`;
+  $("nowPart").title = seg.points.join("\n");
 }
 
 // Where the episode is: the host opens, and once the audio already queued reaches the chosen length
@@ -1150,15 +1204,18 @@ async function loop(ep) {
       if (!alive(ep)) return;
       const cut = phase === "normal" && !floor ? planInterruption(prev, speaker, wantsCut) : null;
       showThinking(speaker);
+      const agenda = phase === "normal" ? agendaNow() : null;
       const asked = performance.now();
       const data = await askAI({
         characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase,
         transcript: show.turns.map((t) => ({ name: t.name, text: t === prev && cut ? cut.text : t.llmText ?? t.text })),
         cutIn: cut ? prev.name : null, user: you().name, intent, floor: floor || undefined,
-        pickNext: s.turnMode === "smart" || undefined, length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
+        pickNext: s.turnMode === "smart" || undefined, agenda: agenda || undefined, length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
       }, ep);
       if (!alive(ep)) return;
       if (data.usage) { show.usage.in += data.usage.in; show.usage.out += data.usage.out; }
+      // The host has just closed a part whose time was up (unless they were answering you): on to the next one.
+      if (agenda?.wrap && speaker.role === "host" && !floor && !prev?.human) nextPart();
       if (floor && show.floor?.name === speaker.name) { // count the time this part will take; end the floor when it is used up
         show.floor.used += data.text.split(/\s+/).length / wpsOf(speaker.name); show.floor.segs++;
         if (floor.finishing || show.floor.secs - show.floor.used < 12) { show.floor = null; show.floorEnd = show.turns.length + 1; }

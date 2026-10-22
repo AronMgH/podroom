@@ -6,7 +6,8 @@ An AI podcast studio that runs on your computer. Create characters with their ow
 give them a topic, and they hold an unscripted conversation that is voiced live, on your own
 machine, with [Phonon TTS](https://huggingface.co/gradium/phonon-40m-en).
 
-- **Studio**: set up an episode and its guests, then listen live: characters, templates, smart turn-taking (each speaker hands over, an AI director steps in when it matters), interruptions,
+- **Studio**: set up an episode and its guests, then listen live. The host follows a run of show the AI plans for the topic
+  (parts, points to cover and time for each) and keeps the talk on it. Every episode is in the sidebar, ready to resume. Characters, templates, smart turn-taking (each speaker hands over, an AI director steps in when it matters), interruptions,
   listener reactions, you at the table and in charge (type or talk: they stop, listen and do what you
   ask), minute-based episodes, an animated orb view with captions, WAV and transcript export. Every episode is saved to `episodes/` as it plays.
 - **Casts**: everyone who has been on an episode, your own saved characters and the built-in templates in one place,

@@ -343,6 +343,16 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"invite: {e}", file=sys.stderr, flush=True)
                 self.send_json(502, {"error": str(e)})
+        elif self.path == "/api/podcast/plan":
+            try:
+                self.send_json(200, podcast.plan_episode(self.read_json()))
+            except PermissionError as e:
+                self.send_json(401, {"error": str(e)})
+            except podcast.RateLimited as e:
+                self.send_json(429, {"error": str(e)})
+            except Exception as e:
+                print(f"plan: {e}", file=sys.stderr, flush=True)
+                self.send_json(502, {"error": str(e)})
         elif self.path == "/api/podcast/next":
             try:
                 self.send_json(200, podcast.direct(self.read_json()))
