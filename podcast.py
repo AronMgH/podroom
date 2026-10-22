@@ -75,7 +75,7 @@ PROVIDERS = {
         "catalog": "https://openrouter.ai/api/v1/models",
         "thinking": (),
         # App attribution: optional, shows the app on openrouter.ai rankings.
-        "headers": {"HTTP-Referer": "https://github.com/AronMgH/podcast-studio", "X-OpenRouter-Title": "Podroom"},
+        "headers": {"HTTP-Referer": "https://github.com/AronMgH/podroom", "X-OpenRouter-Title": "Podroom"},
     },
 }
 MODEL_ID = re.compile(r"^[~A-Za-z0-9._\-/:]{1,120}$")
