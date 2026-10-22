@@ -100,18 +100,20 @@
 <body>
 <div class="wrap">
   <header class="top">
-    <div class="logo">
+    <a class="brand" href="/" title="Back to the Studio">
+      <div class="logo">
       <svg width="28" height="28" viewBox="6 6 52 52" aria-hidden="true" style="color:var(--accent-ink)">
         <path d="M12 54V30a20 20 0 0 1 40 0v24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" opacity=".28"/>
         <rect x="25" y="14" width="14" height="24" rx="7" fill="currentColor"/>
         <path d="M19 31a13 13 0 0 0 26 0M32 44v7M25 52h14" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
       </svg>
-    </div>
-    <div>
-      <h1>Casts</h1>
-      <p>Everyone who has been on the show, your saved characters and lineups</p>
-    </div>
-    <nav class="tabs"><a href="/">Podcast</a><a href="/casts" class="on">Casts</a><a href="/speak">Speak</a></nav>
+      </div>
+      <div>
+        <h1>Podroom</h1>
+        <p>Your AI podcast studio · voices run on this computer</p>
+      </div>
+    </a>
+    <nav class="tabs" aria-label="Pages"><a href="/">Studio</a><a href="/casts" class="on" aria-current="page">Casts</a><a href="/settings">Settings</a></nav>
   </header>
 
   <div class="card toolbar">
@@ -126,7 +128,7 @@
   <section class="card block" data-kind="show">
     <div class="bh"><h2>On the show now</h2><span class="n" id="nShow">0</span><span class="sp"></span>
       <button class="btn" id="saveLineup">Save as a cast</button>
-      <span class="help">The characters in the next episode. Changes here show up on the Podcast page.</span></div>
+      <span class="help">The characters in the next episode. Changes here show up in the Studio.</span></div>
     <div class="cards" id="showCards"></div>
   </section>
 
@@ -138,7 +140,7 @@
 
   <section class="card block" data-kind="mine">
     <div class="bh"><h2>My characters</h2><span class="n" id="nMine">0</span>
-      <span class="help">Your own library. They also appear under “Add character” on the Podcast page, and the AI casting director can reuse them.</span></div>
+      <span class="help">Your own library. They also appear under “Add character” in the Studio, and the AI casting director can reuse them.</span></div>
     <div class="cards" id="mineCards"></div>
   </section>
 
@@ -180,7 +182,7 @@ let state = null, status = null, catalog = [], past = [];
 let filter = store.get("filter", "all"), query = "", showHidden = false;
 
 // ===== state & saving ======================================================================
-// The Podcast page keeps the same state file, so this page saves straight away and reloads it when you come back.
+// The Studio and Settings pages keep the same state file, so this page saves straight away and reloads it when you come back.
 let saveTimer = null;
 function save() {
   clearTimeout(saveTimer);

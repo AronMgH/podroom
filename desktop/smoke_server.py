@@ -31,7 +31,7 @@ try:
             if proc.poll() is not None:
                 sys.exit(f"server exited with code {proc.returncode}")
             time.sleep(0.2)
-    for page in ("/", "/casts", "/speak", "/theme.css"):
+    for page in ("/", "/casts", "/settings", "/theme.css"):
         body = urllib.request.urlopen(base + page, timeout=10).read()
         assert len(body) > 1000, page
     models = json.load(urllib.request.urlopen(base + "/api/models", timeout=10))

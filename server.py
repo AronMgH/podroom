@@ -1,4 +1,4 @@
-"""Podroom: a local AI podcast studio and text-to-speech web app, voiced with Phonon TTS.
+"""Podroom: a local AI podcast studio, voiced with Phonon TTS.
 
 Serves the UI on http://127.0.0.1:7860 and streams speech as raw float32 PCM
 while it is generated, so the browser can start playing within half a second.
@@ -11,7 +11,6 @@ import glob
 import json
 import os
 import sys
-import tempfile
 import threading
 import time
 import urllib.request
@@ -278,8 +277,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, podcast.list_models(pid))
         elif self.path == "/api/podcast/people":
             self.send_json(200, podcast.past_characters())
-        elif self.path == "/speak":
-            with open(os.path.join(HERE, "speak.html"), "rb") as f:
+        elif self.path == "/settings":
+            with open(os.path.join(HERE, "settings.html"), "rb") as f:
                 self.send_body(200, f.read(), "text/html; charset=utf-8")
         elif self.path == "/api/voices":
             self.send_json(200, catalog())
@@ -298,8 +297,6 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/stream":
             self.stream()
-        elif self.path == "/api/wav":
-            self.wav()
         elif self.path == "/api/load":
             self.load()
         elif self.path == "/api/warm":
@@ -446,30 +443,6 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(500, {"error": str(e)})
                 except Exception:
                     pass
-
-    def wav(self):
-        text, model, lang, kwargs, speed = self.read_request()
-        if not text:
-            return self.send_json(400, {"error": "no text"})
-        fd, path = tempfile.mkstemp(suffix=".wav")
-        os.close(fd)
-        try:
-            with lock:
-                tts = get_tts(model, lang)
-                set_speed(tts, speed)
-                tts.save(path, text, **kwargs)
-            with open(path, "rb") as f:
-                body = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", "audio/wav")
-            self.send_header("Content-Disposition", 'attachment; filename="podroom-%d.wav"' % int(time.time()))
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        except Exception as e:
-            self.send_json(500, {"error": str(e)})
-        finally:
-            os.unlink(path)
 
 
 if __name__ == "__main__":

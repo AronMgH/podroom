@@ -4,14 +4,14 @@
 
 An AI podcast studio that runs on your computer. Create characters with their own voices, personalities and talking speed,
 give them a topic, and they hold an unscripted conversation that is voiced live, on your own
-machine, with [Phonon TTS](https://huggingface.co/gradium/phonon-40m-en). Also includes a simple text-to-speech page.
+machine, with [Phonon TTS](https://huggingface.co/gradium/phonon-40m-en).
 
-- **Podcast**: characters, templates, smart turn-taking (each speaker hands over, an AI director steps in when it matters), interruptions,
+- **Studio**: set up an episode and its guests, then listen live: characters, templates, smart turn-taking (each speaker hands over, an AI director steps in when it matters), interruptions,
   listener reactions, you at the table and in charge (type or talk: they stop, listen and do what you
   ask), minute-based episodes, an animated orb view with captions, WAV and transcript export. Every episode is saved to `episodes/` as it plays.
 - **Casts**: everyone who has been on an episode, your own saved characters and the built-in templates in one place,
   plus named lineups you can load back in one click.
-- **Speak**: type text and hear it, with model, voice, gender, accent, speed and expressiveness.
+- **Settings**: your AI provider and key, how the conversation flows, the voice model and speech to text.
 - **AI providers**: [OpenRouter](https://openrouter.ai) (any of its models with one key), DeepSeek, or OpenCode Go
   (OpenAI-compatible chat completions).
 

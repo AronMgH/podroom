@@ -112,9 +112,9 @@ function buildMenu() {
     {
       label: "View",
       submenu: [
-        { label: "Podcast", accelerator: "CmdOrCtrl+1", click: () => origin && win?.loadURL(origin + "/") },
+        { label: "Studio", accelerator: "CmdOrCtrl+1", click: () => origin && win?.loadURL(origin + "/") },
         { label: "Casts", accelerator: "CmdOrCtrl+2", click: () => origin && win?.loadURL(origin + "/casts") },
-        { label: "Speak", accelerator: "CmdOrCtrl+3", click: () => origin && win?.loadURL(origin + "/speak") },
+        { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => origin && win?.loadURL(origin + "/settings") },
         { type: "separator" },
         { role: "reload" }, { role: "toggleDevTools" }, { type: "separator" },
         { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" },

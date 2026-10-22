@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings · Podroom</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3CradialGradient%20id='bg'%20cx='30%25'%20cy='20%25'%20r='120%25'%3E%3Cstop%20offset='0'%20stop-color='%23e6f57a'/%3E%3Cstop%20offset='.45'%20stop-color='%23cde34a'/%3E%3Cstop%20offset='1'%20stop-color='%236f8a12'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='16'%20fill='url%28%23bg%29'/%3E%3Cpath%20d='M12%2054V30a20%2020%200%200%201%2040%200v24'%20fill='none'%20stroke='%2311140a'%20stroke-width='3.5'%20stroke-linecap='round'%20opacity='.28'/%3E%3Crect%20x='25'%20y='14'%20width='14'%20height='24'%20rx='7'%20fill='%2311140a'/%3E%3Cpath%20d='M29%2021h6M29%2026h6M29%2031h6'%20stroke='%23cde34a'%20stroke-width='2.2'%20stroke-linecap='round'%20opacity='.7'/%3E%3Cpath%20d='M19%2031a13%2013%200%200%200%2026%200'%20fill='none'%20stroke='%2311140a'%20stroke-width='4'%20stroke-linecap='round'/%3E%3Cpath%20d='M32%2044v7M25%2052h14'%20stroke='%2311140a'%20stroke-width='4'%20stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { padding: 22px 22px 30px; }
+  .wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  .cols { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  .help { font-size: 12px; color: var(--faint); font-weight: 400; letter-spacing: normal; text-transform: none; }
+  .keyok { color: var(--ok); font-weight: 600; }
+  .row { display: flex; gap: 12px; align-items: end; }
+  .row > * { flex: 1; min-width: 0; }
+  section.block { padding: 20px 20px 22px; display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 18px; }
+  section.block h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  section.block > p { margin: -8px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .opt { display: flex; flex-direction: column; gap: 7px; }
+  .status { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+  .status.err { color: var(--danger); }
+  @media (max-width: 560px) {
+    body { padding: 14px 16px 24px; }
+    header.top nav.tabs { margin-left: 0; width: 100%; }
+    nav.tabs a { flex: 1; text-align: center; }
+    .row { flex-direction: column; align-items: stretch; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/" title="Back to the Studio">
+      <div class="logo">
+      <svg width="28" height="28" viewBox="6 6 52 52" aria-hidden="true" style="color:var(--accent-ink)">
+        <path d="M12 54V30a20 20 0 0 1 40 0v24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" opacity=".28"/>
+        <rect x="25" y="14" width="14" height="24" rx="7" fill="currentColor"/>
+        <path d="M19 31a13 13 0 0 0 26 0M32 44v7M25 52h14" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+      </div>
+      <div>
+        <h1>Podroom</h1>
+        <p>Your AI podcast studio · voices run on this computer</p>
+      </div>
+    </a>
+    <nav class="tabs" aria-label="Pages"><a href="/">Studio</a><a href="/casts">Casts</a><a href="/settings" class="on" aria-current="page">Settings</a></nav>
+  </header>
+
+  <div class="cols">
+    <section class="card block" id="ai">
+      <h2>AI</h2>
+      <p>The AI that writes what the characters say. It needs an API key from the provider you pick.</p>
+      <div class="row">
+        <label class="f">Provider<select id="provider"></select></label>
+        <label class="f">Model<select id="llmModel"></select></label>
+      </div>
+      <label class="f" id="customModelRow" hidden>Model ID <span class="help" id="customModelInfo"></span>
+        <input type="text" id="customModel" list="modelList" maxlength="120" spellcheck="false" autocomplete="off" placeholder="Search, or paste an ID such as anthropic/claude-haiku-5.5">
+        <datalist id="modelList"></datalist>
+      </label>
+      <label class="f"><span><span id="keyLabel">API key</span> <span class="help" id="keyState"></span></span>
+        <div class="row" style="align-items:center;flex-direction:row">
+          <input type="password" id="apiKey" autocomplete="off" spellcheck="false">
+          <button class="btn" id="saveKey" style="flex:none">Save</button>
+          <button class="btn ghost danger" id="removeKey" style="flex:none" hidden>Remove</button>
+        </div>
+        <span class="help" id="keyHelp"></span>
+      </label>
+    </section>
+
+    <section class="card block">
+      <h2>Conversation</h2>
+      <p>How every episode flows. The length of an episode is set in the Studio.</p>
+      <label class="f">Turn-taking
+        <select id="turnMode">
+          <option value="smart">Smart: each speaker hands over, an AI director steps in</option>
+          <option value="natural">Simple: whoever was asked</option>
+          <option value="roundrobin">Round robin</option>
+        </select>
+      </label>
+      <div class="opt"><span class="label">Default reply length</span><div class="seg" id="lengthSeg"></div></div>
+      <label class="f">Creativity <span class="help" id="tempVal"></span><input type="range" id="temperature" min="0.2" max="1.6" step="0.1"></label>
+      <label class="f">Pause between speakers <span class="help" id="gapVal"></span><input type="range" id="gap" min="0" max="1.5" step="0.05"></label>
+      <div class="opt"><span class="label">Interruptions</span><div class="seg" id="intSeg"></div></div>
+      <div class="opt"><span class="label">Listener reactions (“yeah”, “right”)</span><div class="seg" id="reactSeg"></div></div>
+      <label class="f">AI calls per minute <span class="help">Lower this if your provider says “too many requests”.</span><input type="number" id="rpm" min="2" max="60"></label>
+    </section>
+
+    <section class="card block">
+      <h2>Voices</h2>
+      <p>The voices run on this computer. 8-bit sounds best; 4-bit is lighter on memory.</p>
+      <label class="f">Voice model<select id="ttsModel"></select></label>
+    </section>
+
+    <section class="card block" id="speech">
+      <h2>Speech to text</h2>
+      <p>Talk to the show instead of typing. Your speech is turned into text on this computer; nothing is sent anywhere.</p>
+      <span class="help" id="sttState"></span>
+      <button class="btn" id="sttGet" style="align-self:flex-start" hidden>Download the speech model (about 290 MB)</button>
+    </section>
+
+    <div class="status" id="status"></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const LENGTHS = [["short", "Short"], ["medium", "Medium"], ["long", "Long"]];
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const post = (url, body, signal) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+function setStatus(msg, err) { $("status").textContent = msg || ""; $("status").className = "status" + (err ? " err" : ""); }
+
+let state = null, status = null, ttsModels = [];
+
+// ===== state & saving ======================================================================
+// The Studio and Casts pages keep the same state file, so this page saves straight away and reloads it when you come back.
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flush, 400);
+}
+function flush() {
+  if (saveTimer === null) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  return post("/api/podcast/state", state).catch(() => setStatus("Could not save. Is the server running?", true));
+}
+window.addEventListener("pagehide", () => { if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; navigator.sendBeacon("/api/podcast/state", new Blob([JSON.stringify(state)], { type: "application/json" })); } });
+window.addEventListener("focus", async () => {
+  if (saveTimer !== null || document.activeElement?.matches("input, select")) return;
+  const st = await fetch("/api/podcast/state").then((r) => r.json()).catch(() => null);
+  if (!st || saveTimer !== null) return;
+  state = st.state; status = st.status;
+  renderSettings(); renderKey();
+});
+
+async function init() {
+  const [st, models] = await Promise.all([
+    fetch("/api/podcast/state").then((r) => r.json()),
+    fetch("/api/models").then((r) => r.json()).catch(() => []),
+  ]);
+  state = st.state; status = st.status;
+  ttsModels = models.filter((m) => m.languages.includes("en"));
+  if (!ttsModels.some((m) => m.id === state.settings.ttsModel)) state.settings.ttsModel = ttsModels[0]?.id || "";
+  renderSettings(); renderKey();
+  // Sent here from the Studio to add a key: put the cursor in the key field.
+  if (location.hash === "#ai" && !keyOk()) $("apiKey").focus();
+}
+
+// ===== small widgets ===========================================================================
+function seg(el, options, value, onPick) {
+  el.innerHTML = "";
+  for (const [v, label] of options) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.setAttribute("aria-pressed", String(v === value));
+    b.onclick = () => { onPick(v); seg(el, options, v, onPick); };
+    el.appendChild(b);
+  }
+}
+function rangeFill(el) { el.style.setProperty("--p", `${((el.value - el.min) / (el.max - el.min)) * 100}%`); }
+
+// ===== settings ================================================================================
+function renderSettings() {
+  const s = state.settings;
+  $("turnMode").value = s.turnMode; $("turnMode").onchange = () => { s.turnMode = $("turnMode").value; save(); };
+  seg($("lengthSeg"), LENGTHS, s.length, (v) => { s.length = v; save(); });
+  const tempLabel = () => ($("tempVal").textContent = `${s.temperature.toFixed(1)} · ${s.temperature < .7 ? "focused" : s.temperature < 1.2 ? "balanced" : "wild"}`);
+  $("temperature").value = s.temperature; tempLabel(); rangeFill($("temperature"));
+  $("temperature").oninput = () => { s.temperature = parseFloat($("temperature").value); tempLabel(); rangeFill($("temperature")); save(); };
+  $("gap").value = s.gap; $("gapVal").textContent = `${s.gap.toFixed(2)}s`; rangeFill($("gap"));
+  $("gap").oninput = () => { s.gap = parseFloat($("gap").value); $("gapVal").textContent = `${s.gap.toFixed(2)}s`; rangeFill($("gap")); save(); };
+  seg($("intSeg"), [[0, "Off"], [1, "Some"], [2, "Lots"]], s.interrupts ?? 1, (v) => { s.interrupts = v; save(); });
+  seg($("reactSeg"), [[0, "Off"], [1, "On"]], s.reactions ?? 1, (v) => { s.reactions = v; save(); });
+  $("rpm").value = s.rpm ?? 10;
+  $("rpm").oninput = () => { s.rpm = Math.max(2, Math.min(60, parseInt($("rpm").value) || 10)); save(); };
+  $("provider").innerHTML = status.providers.map((p) => `<option value="${p.id}">${esc(p.label)}</option>`).join("");
+  if (!status.providers.some((p) => p.id === s.provider)) s.provider = status.providers[0].id;
+  $("provider").value = s.provider;
+  $("provider").onchange = () => { s.provider = $("provider").value; s.llmModel = prov().models[0].id; save(); renderSettings(); renderKey(); };
+  // Some providers (OpenRouter) take any model ID: the list holds a few picks and "Other model" opens a search over all of them.
+  const p = prov(), models = p.models, OTHER = "__other";
+  const custom = p.anyModel && s.llmModel && !models.some((m) => m.id === s.llmModel);
+  $("llmModel").innerHTML = models.map((m) => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join("")
+    + (p.anyModel ? `<option value="${OTHER}">Other ${esc(p.label)} model…</option>` : "");
+  if (!custom && !models.some((m) => m.id === s.llmModel)) s.llmModel = models[0].id;
+  $("llmModel").value = custom ? OTHER : s.llmModel;
+  $("customModelRow").hidden = !custom;
+  $("customModel").value = custom ? s.llmModel : "";
+  if (custom) loadModelList(p.id);
+  $("llmModel").onchange = () => {
+    if ($("llmModel").value === OTHER) {
+      $("customModelRow").hidden = false; loadModelList(p.id); $("customModel").focus();
+    } else { s.llmModel = $("llmModel").value; $("customModelRow").hidden = true; save(); }
+  };
+  $("customModel").oninput = () => {
+    const v = $("customModel").value.trim();
+    if (/^[~A-Za-z0-9._\-/:]{1,120}$/.test(v)) { s.llmModel = v; save(); }
+    showModelInfo(v);
+  };
+  $("ttsModel").innerHTML = ttsModels.map((m) => `<option value="${m.id}">${esc(m.name)} · ${m.variant}</option>`).join("");
+  $("ttsModel").value = s.ttsModel; $("ttsModel").onchange = () => { s.ttsModel = $("ttsModel").value; save(); };
+}
+
+// The full model list of a provider that has one, fetched once per page load for the "Other model" search.
+const modelLists = {};
+async function loadModelList(pid) {
+  if (!modelLists[pid]) {
+    $("customModelInfo").textContent = "Loading the model list…";
+    modelLists[pid] = await fetch(`/api/podcast/models?provider=${encodeURIComponent(pid)}`).then((r) => r.json()).catch(() => []);
+  }
+  const list = modelLists[pid];
+  $("modelList").innerHTML = list.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}${m.price ? ` · $${m.price[0]} / $${m.price[1]} per M tokens` : ""}</option>`).join("");
+  showModelInfo($("customModel").value.trim());
+}
+function showModelInfo(id) {
+  const list = modelLists[prov().id] || [];
+  const m = list.find((x) => x.id === id);
+  $("customModelInfo").textContent = !id ? (list.length ? `${list.length} models` : "")
+    : m ? `${m.name}${m.price ? ` · $${m.price[0]} in, $${m.price[1]} out per million tokens` : ""}${m.thinks ? " · always thinks first, so a little slower" : ""}`
+    : list.length ? "Not in the list. Check the ID on openrouter.ai/models" : "";
+}
+
+// ===== API key ===================================================================================
+// The selected AI provider, and whether its key is saved.
+const prov = () => status.providers.find((p) => p.id === state.settings.provider) || status.providers[0];
+const keyOk = () => !!prov()?.keyConfigured;
+
+function renderKey() {
+  const p = prov(), ok = keyOk();
+  $("keyLabel").textContent = `${p.label} API key`;
+  $("keyState").innerHTML = status.fake ? '<span class="keyok">Test mode: canned lines, no API calls</span>' : ok ? '<span class="keyok">✓ Key saved</span>' : "Not set";
+  $("removeKey").hidden = !ok || status.fake;
+  $("apiKey").placeholder = ok ? "Paste a new key to replace it" : p.keyHint;
+  $("keyHelp").textContent = `Stored only on this computer, in ${p.keyFile}. It is never shown again.`;
+}
+async function setKey(key) {
+  await flush(); // the provider choice first, so the key lands with the right one
+  const res = await post("/api/podcast/key", { provider: prov().id, key }).then((r) => r.json()).catch(() => null);
+  if (!res?.providers) return setStatus("Could not save the key. Is the server running?", true);
+  status = { ...status, providers: res.providers };
+  renderKey();
+  setStatus(key ? `${prov().label} key saved. Head to the Studio and press Start.` : "Key removed.");
+}
+$("saveKey").onclick = async () => {
+  const key = $("apiKey").value.trim();
+  if (!key) return;
+  $("apiKey").value = "";
+  await setKey(key);
+};
+$("apiKey").addEventListener("keydown", (e) => { if (e.key === "Enter") $("saveKey").click(); });
+$("removeKey").onclick = () => setKey("");
+
+// ===== speech to text ============================================================================
+function renderStt(d) {
+  const mb = (n) => Math.round(n / 1e6);
+  $("sttState").textContent = d.ready ? "Installed. Click the mic in the Studio to talk to the show."
+    : d.running ? (d.total ? `Downloading… ${mb(d.done)} of ${mb(d.total)} MB` : "Starting the download…")
+    : d.error || "Not installed. It uses Moonshine, which runs on this computer.";
+  $("sttGet").hidden = d.ready || d.running;
+  $("sttGet").textContent = d.error ? "Try again" : "Download the speech model (about 290 MB)";
+  if (d.running) setTimeout(() => fetch("/api/stt").then((r) => r.json()).then(renderStt).catch(() => {}), 700);
+}
+$("sttGet").onclick = () => post("/api/stt/download", {}).then((r) => r.json()).then(renderStt).catch((e) => setStatus(e.message, true));
+fetch("/api/stt").then((r) => r.json()).then(renderStt).catch(() => {});
+
+init().catch((e) => setStatus(`Could not load settings: ${e.message}`, true));
+</script>
+</body>
+</html>
