@@ -414,7 +414,7 @@ class RateLimited(RuntimeError):
         self.retry_after = retry_after
 
 
-def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, cues=(), floor=None):
+def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, cues=(), floor=None, pick_next=False):
     spec = LENGTHS[length] if isinstance(length, str) else length
     others = [c for c in cast if c["name"] != me["name"]]
     host = me.get("role") == "host"
@@ -505,6 +505,12 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
                          "conversation back.")
     for cue in cues:
         lines.append(f"- {cue}")
+    if pick_next and others:
+        host_name = next((c["name"] for c in others if c.get("role") == "host"), None)
+        lines.append("- After your line, on a new line, add the tag [NEXT: name] with who should naturally speak after you: "
+                     "the person you asked or spoke to, whoever your line most concerns"
+                     + (f", or {host_name} to move things on" if host_name else "")
+                     + f". One of: {', '.join(c['name'] for c in others)}. The tag is not read out.")
     if cut_in:
         lines.append(f"- You are cutting in: {cut_in} was interrupted mid-sentence (their line ends with a dash). "
                      "Jump in with a quick interjection such as \"Wait, wait\", \"Hold on\" or \"Sorry, but\", then make your point fast.")
@@ -661,6 +667,8 @@ def generate_turn(req):
     user = (req.get("user") or "").strip() or None
     floor = req.get("floor") if isinstance(req.get("floor"), dict) and req["floor"].get("mode") in ("start", "continue", "last") else None
     spec = LENGTHS[length]
+    # Smart turn-taking: the speaker also names who goes next, so a line needs one AI call, not two.
+    pick_next = bool(req.get("pickNext")) and phase in ("open", "normal") and (not floor or floor["mode"] == "last")
     if floor:  # a long turn is written in parts of 30 to 170 words, with a token and sentence budget to match
         words = max(30, min(170, int(floor.get("words") or 120)))
         spec = (f"about {words} words of natural, continuous speech", int(words * 1.8) + 60, max(3, round(words / 11)))
@@ -668,21 +676,22 @@ def generate_turn(req):
     if FAKE:
         if floor:
             return {"name": me["name"], "text": fake_floor(me, words)}
-        line = fake_line(me, cast, transcript, phase)
-        return {"name": me["name"], "text": f"Wait, hold on. {line}" if req.get("cutIn") else line}
+        line, nxt = take_next(fake_line(me, cast, transcript, phase), me, cast, user)
+        return {"name": me["name"], "text": f"Wait, hold on. {line}" if req.get("cutIn") else line, "next": nxt if pick_next else None}
 
     others = [c["name"] for c in cast if c["name"] != me["name"]]
     messages = [
         {"role": "system", "content": system_prompt(me, cast, req.get("show", "the show"), req.get("topic", ""), spec, phase,
                                                     req.get("cutIn"), user,
-                                                    turn_cues(me, cast, transcript, user, req.get("intent")), floor)},
+                                                    turn_cues(me, cast, transcript, user, req.get("intent")), floor, pick_next)},
         {"role": "user", "content": user_prompt(me, transcript)},
     ]
     stop = [f"\n{n}:" for n in others + ([user] if user else [])][:4]  # four is the most every provider accepts
-    data, model, name = chat(req, messages, spec[1], req.get("temperature", 1.0), stop)
+    data, model, name = chat(req, messages, spec[1] + (15 if pick_next else 0), req.get("temperature", 1.0), stop)
 
     choice = data["choices"][0]
     raw = re.sub(r"(?s)<think>.*?(</think>|$)", "", choice["message"].get("content") or "")  # inline reasoning
+    raw, nxt = take_next(raw, me, cast, user)
     # The opening and the sign-off get one extra sentence for the welcome or the thank-yous.
     everyone = cast + ([{"name": user}] if user else [])
     text = limit_sentences(clean(raw, me, everyone), spec[2] + (1 if phase in ("open", "close") else 0))
@@ -697,8 +706,31 @@ def generate_turn(req):
             raise RuntimeError(f"{model} spent its whole reply budget thinking. Pick a faster model.")
         raise RuntimeError(f"{name} returned an empty line.")
     usage = data.get("usage", {})
-    return {"name": me["name"], "text": text, "toYou": to_you,
+    return {"name": me["name"], "text": text, "toYou": to_you, "next": nxt if pick_next and not to_you else None,
             "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
+
+
+# "[NEXT: Benny]", "(Next: Benny)" or "Next: Benny" on a line of its own, at the very end of the reply.
+NEXT_TAG = re.compile(r"(?:[\[(]|(?:^|\n)[ \t]*)\s*next(?:\s+speaker)?\s*[:=]\s*([^\]\)\n]{1,60}?)\s*[\])]?\s*$", re.I)
+HANDOVER_END = re.compile(r"\s*\[\s*handover\s*\]\s*$", re.I)
+
+
+def take_next(raw, me, cast, user=None):
+    """Split the speaker's [NEXT: name] tag off the end of their reply. Returns (reply without the tag, the name or None).
+    The name only counts when it is someone else at the table, never the speaker and never you."""
+    body = raw.rstrip()
+    h = HANDOVER_END.search(body)  # the handover tag may come before or after it; keep it for the check after clean()
+    if h:
+        body = body[: h.start()]
+    m = NEXT_TAG.search(body)
+    if not m:
+        return raw, None
+    raw = body[: m.start()].rstrip() + (" [HANDOVER]" if h else "")
+    wanted = m.group(1).strip().strip("\"'*.").lower()
+    names = [c["name"] for c in cast if c["name"] != me["name"] and c["name"] != user]
+    pick = next((n for n in names if n.lower() == wanted), None) \
+        or next((n for n in names if wanted and (wanted in n.lower() or n.lower() in wanted)), None)
+    return raw, pick
 
 
 def asks_user(text, user):
@@ -957,4 +989,6 @@ def fake_line(me, cast, transcript, phase):
     ])
     if others and random.random() < 0.5:
         line += f" What do you think, {random.choice(others)}?"
+    elif others and random.random() < 0.8:
+        line += f"\n[NEXT: {random.choice(others)}]"
     return line

@@ -281,7 +281,7 @@
             <label class="f">Length (minutes)<input type="number" id="minutes" min="1" max="120"></label>
             <label class="f">Turn-taking
               <select id="turnMode">
-                <option value="smart">Smart: an AI director decides</option>
+                <option value="smart">Smart: each speaker hands over, an AI director steps in</option>
                 <option value="natural">Simple: whoever was asked</option>
                 <option value="roundrobin">Round robin</option>
               </select>
@@ -1015,28 +1015,32 @@ async function start() {
   for (const c of state.characters) c.name = c.name.trim();
   previewing?.abort();
   // Clear the last episode before any await, so a second click cannot start a second show.
-  show.turns = []; show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99;
+  show.turns = []; show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
   $("transcript").innerHTML = ""; $("turnNo").textContent = "0"; $("clock").textContent = "0:00"; show.signedOff = false;
   show.running = true; show.epoch++;
   show.session = crypto.randomUUID(); // one conversation ID per episode, for providers that route by session
   newRecord();
   const ep = show.epoch;
   setControls();
-  try {
-    await audio();
-    setStatus("Warming up voices…");
-    const voices = [...new Set(cast().map((c) => c.voice))];
-    const load = await post("/api/load", { model: state.settings.ttsModel, lang: "en" });
-    if (!load.ok) throw new Error((await load.json()).error);
-    const warm = await post("/api/warm", { model: state.settings.ttsModel, lang: "en", voices });
-    if (!warm.ok) throw new Error((await warm.json()).error);
-  } catch (e) {
-    return endShow(`Could not prepare voices: ${e.message}`, true);
-  }
-  if (!alive(ep)) return;
-  setStatus("");
+  try { await audio(); } catch (e) { return endShow(`Could not start audio: ${e.message}`, true); }
+  // The voices warm up while the AI writes the opening line, so neither waits for the other.
+  setStatus("Warming up voices…");
+  show.ready = (async () => {
+    try {
+      const voices = [...new Set(cast().map((c) => c.voice))];
+      const load = await post("/api/load", { model: state.settings.ttsModel, lang: "en" });
+      if (!load.ok) throw new Error((await load.json()).error);
+      const warm = await post("/api/warm", { model: state.settings.ttsModel, lang: "en", voices });
+      if (!warm.ok) throw new Error((await warm.json()).error);
+    } catch (e) {
+      if (alive(ep)) endShow(`Could not prepare voices: ${e.message}`, true);
+      return false;
+    }
+    if (alive(ep) && $("status").textContent === "Warming up voices…") setStatus("");
+    if (alive(ep) && state.settings.reactions) buildReactions(ep);
+    return alive(ep);
+  })();
   loop(ep);
-  if (state.settings.reactions) buildReactions(ep);
 }
 
 // ===== reactions ========================================================================================
@@ -1155,11 +1159,12 @@ function floorPlan() {
     secs: f.secs, by: f.by, finishing };
 }
 
-// Smart turn-taking: obvious cases are decided here, everything else by an AI director that reads the
-// whole conversation and says who would naturally speak next and what they want to say. If the director
-// is slow, over budget or confused, the simple rule decides instead, so it never holds up the show.
-// Your word always wins: a stage handed out from the studio box is granted right here, and anything
-// else you ask goes to the director.
+// Smart turn-taking: obvious cases are decided here, then each speaker names who should go next along with
+// their line, so most lines need one AI call. An AI director that reads the whole conversation decides
+// when you have just spoken, when the pick would keep two people going in circles, when the pick may hold
+// the floor for a long stretch, or when the speaker named nobody. If the director fails or is over budget,
+// the simple rule decides instead. Your word always wins: a stage handed out from the studio box is
+// granted right here, and anything else you ask goes to the director.
 async function chooseNext(phase, ep) {
   const people = cast();
   const host = people.find((c) => c.role === "host") || people[0];
@@ -1182,16 +1187,26 @@ async function chooseNext(phase, ep) {
   const bossed = last.human; // you have said something to act on
   if (!bossed && /\?/.test(last.text)) { // asked someone by name near the end of the line
     const asked = pickNext(phase, "natural");
-    if (mentions(last.text.slice(Math.floor(last.text.length * 0.45)), [asked])) return { speaker: asked };
+    if (mentions(last.text.slice(Math.floor(last.text.length * 0.45)), [asked])) return { speaker: asked, wantsCut: false };
+  }
+  const hint = !bossed && others.find((c) => c.name === last.next);
+  if (hint) {
+    const recent = show.turns.slice(-3);
+    const circles = people.length >= 3 && recent.length === 3 && !recent.some((t) => t.human)
+      && new Set([...recent.map((t) => t.name), hint.name]).size === 2;
+    // Whether this person should hold the floor is the director's call, asked at most once every 8 lines.
+    const mayHoldFloor = hint.longest > 0 && show.turns.length - Math.max(show.floorEnd, show.floorAsked) >= 8;
+    if (!circles && !mayHoldFloor) return { speaker: hint };
   }
   if (canCall()) {
     show.calls.push(performance.now());
+    show.floorAsked = show.turns.length;
     try {
       const res = await post("/api/podcast/next", {
         characters: people, show: state.show, topic: state.topic, user: you().name,
         transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })),
         provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session,
-      }, AbortSignal.timeout(5000));
+      }, AbortSignal.timeout(bossed ? 20000 : 10000));
       const d = await res.json();
       const speaker = res.ok && others.find((c) => c.name === d.next);
       if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
@@ -1230,11 +1245,12 @@ async function loop(ep) {
       if (!alive(ep)) return;
       const cut = phase === "normal" && !floor ? planInterruption(prev, speaker, wantsCut) : null;
       showThinking(speaker);
+      const asked = performance.now();
       const data = await askAI({
         characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase,
         transcript: show.turns.map((t) => ({ name: t.name, text: t === prev && cut ? cut.text : t.llmText ?? t.text })),
         cutIn: cut ? prev.name : null, user: you().name, intent, floor: floor || undefined,
-        length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
+        pickNext: s.turnMode === "smart" || undefined, length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
       }, ep);
       if (!alive(ep)) return;
       if (data.usage) { show.usage.in += data.usage.in; show.usage.out += data.usage.out; }
@@ -1244,14 +1260,18 @@ async function loop(ep) {
       }
 
       const turn = { name: speaker.name, who: { ...speaker }, text: data.text, pcm: [], sources: [], reactions: [], gain: null,
-        start: null, end: null, done: false, abort: new AbortController(), el: null, cutsPrev: cut, phase, floor: floor?.mode };
+        start: null, end: null, done: false, abort: new AbortController(), el: null, cutsPrev: cut, phase, floor: floor?.mode,
+        next: data.next || null, aiMs: Math.round(performance.now() - asked) };
       hideThinking();
       show.turns.push(turn);
       turn.entry = logEntry({ type: "line", name: speaker.name, role: speaker.role, phase, text: data.text, cutIn: cut ? prev.name : undefined, intent: intent || undefined, floor: floor?.mode, toYou: data.toYou || undefined });
       renderTurn(turn);
       await waitUntil(() => !alive(ep) || !prev || prev.done); // never overlap two lines' audio
-      if (!alive(ep)) return;
+      if (!alive(ep) || (await show.ready) === false) return;
       await speakTurn(turn);
+      // How long the AI took and how much silence that left, in the console for anyone tuning speed.
+      console.info(`[podroom] line ${show.turns.indexOf(turn) + 1} ${speaker.name}: AI ${turn.aiMs} ms, extra silence ${(turn.late || 0).toFixed(1)} s`
+        + (data.next ? `, picks ${data.next}` : ""));
       if (data.toYou && phase !== "close") return yourTurn(turn, ep);
       if (phase === "close") show.signedOff = true;
     }
@@ -1286,14 +1306,15 @@ async function askAI(body, ep) {
 }
 
 // Now and then the next speaker cuts in before the last one finishes. Never on the host's opening or on
-// you, and never soon after the last real cut. With the director, only when it says this person can't wait.
+// you, and never soon after the last real cut. When the director chose the speaker, only when it says they
+// can't wait; otherwise more often for fiery attitudes.
 function planInterruption(prev, speaker, wantsCut) {
   const level = state.settings.interrupts ?? 1;
   if (!level || !prev || prev.human || prev.floor || prev.phase === "open" || prev.cutAt || prev.cutsPrev) return null;
   if (show.turns.length - show.lastCut < (level === 2 ? 4 : 7)) return null;
   const words = prev.text.split(/\s+/);
   if (words.length < 12) return null;
-  if (state.settings.turnMode === "smart") {
+  if (state.settings.turnMode === "smart" && wantsCut !== undefined) {
     if (!wantsCut && !(level === 2 && Math.random() < 0.08)) return null;
   } else {
     const temper = ["provocative", "sarcastic", "funny", "dramatic", "grumpy", "enthusiastic"].includes(speaker.attitude) ? 1.5
@@ -1340,6 +1361,7 @@ async function speakTurn(turn) {
       if (turn.abort.signal.aborted) return;
       if (turn.start === null) {
         turn.start = Math.max(show.nextTime + gap, ctx.currentTime + 0.1);
+        turn.late = turn.start - (show.nextTime + gap); // silence beyond the natural pause, while the line was still coming
         show.nextTime = turn.start;
       }
       const buf = ctx.createBuffer(1, pcm.length, rate); buf.copyToChannel(pcm, 0);

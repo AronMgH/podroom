@@ -54,6 +54,7 @@ SPEED_DELTA = {-2: 1.5, -1: 0.6, 0: 0.25, 1: 0.0, 2: -0.2}
 EXPR_TEMP = {0: 0.15, 1: 0.3, 2: 0.45, 3: 0.6}
 
 lock = threading.Lock()  # the runtime wants one call at a time
+warmed = set()  # (model, language, voice) already spoken once, so the next show skips warming them
 _loaded = {}  # (model id, lang) -> ptts.TTS
 _voices = None
 
@@ -371,9 +372,13 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 tts = get_tts(data.get("model", ""), data.get("lang", "en"))
                 for voice in data.get("voices", []):
+                    key = (data.get("model", ""), data.get("lang", "en"), voice)
+                    if key in warmed:  # already spoken once since the server started: nothing left to load
+                        continue
                     with tts.stream("Hi.", **({"voice": voice} if voice else {})) as audio:
                         for _ in audio:
                             pass
+                    warmed.add(key)
             self.send_json(200, {"ok": True})
         except Exception as e:
             self.send_json(500, {"error": str(e)})
