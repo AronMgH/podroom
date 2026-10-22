@@ -81,7 +81,7 @@ const isOurs = (url) => !!origin && (url === origin || url.startsWith(origin + "
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1360, height: 900, minWidth: 380, minHeight: 500,
+    width: 1140, height: 760, minWidth: 380, minHeight: 500,
     title: "Podroom", backgroundColor: "#0b0b0d", autoHideMenuBar: true, show: false,
     icon: path.join(__dirname, "build", "icon.png"),
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },

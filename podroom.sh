@@ -18,7 +18,7 @@ fi
 
 # An app window without tabs or address bar; fall back to the default browser.
 if command -v google-chrome >/dev/null; then
-  google-chrome --app="$URL" --class=Podroom --user-data-dir="$PROFILE" --window-size=1360,900
+  google-chrome --app="$URL" --class=Podroom --user-data-dir="$PROFILE" --window-size=1140,760
   # The window is closed: stop the server this launch started. One that was already running is left alone.
   [ -n "$STARTED" ] && kill "$STARTED" 2>/dev/null
   exit 0

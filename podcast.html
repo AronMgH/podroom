@@ -118,9 +118,21 @@
   .now .part { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; padding: 4px 10px; border-radius: 999px; font-size: 12px;
     color: var(--accent); background: var(--accent-soft); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
   .now .faces .avatar { width: 30px; height: 30px; font-size: 12px; border: 2px solid #141517; margin-left: -8px; }
-  .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 20px; }
-  .bar .meta { margin-left: auto; display: flex; gap: 16px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .bar .meta b { color: var(--text); font-weight: 600; }
+  .now .tools { display: flex; align-items: center; gap: 8px; flex: none; }
+  .now .clock { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; margin-right: 4px; white-space: nowrap; }
+  .now .clock b { color: var(--text); font-weight: 600; }
+  .dock { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 16px 18px 2px; }
+  button.ctl {
+    width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: none; cursor: pointer; padding: 0;
+    color: var(--text); background: var(--glass-2); border: 1px solid var(--edge); transition: background .15s, transform .1s;
+  }
+  button.ctl:hover { background: var(--glass-3); }
+  button.ctl:active { transform: scale(.95); }
+  button.ctl:disabled { opacity: .4; cursor: default; transform: none; }
+  button.ctl svg { width: 18px; height: 18px; }
+  button.ctl.main { width: 62px; height: 62px; color: var(--accent-ink); background: var(--accent); border: 0; box-shadow: 0 0 26px var(--accent-glow); }
+  button.ctl.main:hover { background: #dbef5c; }
+  button.ctl.main svg { width: 24px; height: 24px; }
   .live {
     display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--faint);
     padding: 6px 11px; border-radius: 999px; border: 1px solid var(--edge); background: var(--glass);
@@ -185,13 +197,13 @@
 
   .steer { display: flex; gap: 8px; padding: 0 18px; }
   .steer input { border-radius: 999px; padding-left: 16px; }
-  .steer #micBtn.rec { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); animation: recpulse 1.2s infinite; }
-  .steer #micBtn.busy { opacity: .6; cursor: progress; }
+  #micBtn.rec { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); animation: recpulse 1.2s infinite; }
+  #micBtn.busy { opacity: .6; cursor: progress; }
   @keyframes recpulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 18%, transparent); } }
   .crow.me .role { color: var(--text); }
   .crow.me .avatar svg { width: 16px; height: 16px; }
-  .foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 14px 18px 18px; }
-  .foot .status { color: var(--muted); font-size: 13px; margin-right: auto; }
+  .foot { display: flex; justify-content: center; padding: 8px 18px 16px; min-height: 38px; }
+  .foot .status { color: var(--muted); font-size: 13px; text-align: center; }
   .foot .status.err { color: var(--danger); }
   .banner {
     display: flex; gap: 10px; align-items: center; margin: 0 18px 12px; padding: 10px 14px; border-radius: 16px; font-size: 13px;
@@ -207,7 +219,7 @@
     .stage { height: auto; min-height: 0; padding: 18px 16px; }
   }
   @media (max-width: 560px) {
-    .bar .meta { margin-left: 0; width: 100%; }
+    .now { flex-wrap: wrap; }
     .grid2, .formats { grid-template-columns: 1fr; }
     .dialog .dh { flex-wrap: wrap; }
   }
@@ -255,16 +267,17 @@
     <section class="card studio">
       <div class="now">
         <div class="t"><h2 id="nowShow"></h2><p id="nowTopic"></p><div class="part" id="nowPart" hidden></div></div>
-        <div class="seg" id="viewSeg" style="flex:none;width:150px"></div>
-      </div>
-      <div class="bar">
-        <button class="btn primary" id="startBtn"></button>
-        <button class="btn" id="pauseBtn" hidden></button>
-        <button class="btn" id="stopBtn" hidden>
-          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop
-        </button>
-        <span class="live" id="live" hidden><span class="d"></span><span id="liveText">OFF AIR</span></span>
-        <div class="meta"><span><b id="clock">0:00</b> / <span id="turnMax">10:00</span></span></div>
+        <div class="tools">
+          <span class="live" id="live" hidden><span class="d"></span><span id="liveText">ON AIR</span></span>
+          <span class="clock"><b id="clock">0:00</b> / <span id="turnMax">10:00</span></span>
+          <button class="btn icon" id="dlTxt" hidden title="Download the transcript" aria-label="Download the transcript">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg>
+          </button>
+          <button class="btn icon" id="dlWav" hidden title="Download the episode audio (WAV)" aria-label="Download the episode audio">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          </button>
+          <div class="seg" id="viewSeg" style="flex:none;width:150px"></div>
+        </div>
       </div>
       <div class="banner" id="keyBanner" hidden>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
@@ -284,16 +297,16 @@
       </div>
       <div class="steer" id="steer" hidden>
         <input type="text" id="noteInput" maxlength="400" disabled>
-        <button class="btn icon" id="micBtn" disabled></button>
         <button class="btn" id="noteBtn" disabled>Send</button>
       </div>
-      <div class="foot">
-        <span class="status" id="status"></span>
-        <button class="btn" id="dlWav" hidden>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>Episode WAV
-        </button>
-        <button class="btn" id="dlTxt" hidden>Transcript</button>
+      <!-- The controls, like a player's: only the big play button before a show, then stop, pause and the mic. -->
+      <div class="dock">
+        <button class="ctl" id="stopBtn" hidden title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+        <button class="ctl main" id="startBtn"></button>
+        <button class="ctl main" id="pauseBtn" hidden></button>
+        <button class="ctl" id="micBtn" hidden></button>
       </div>
+      <div class="foot" id="foot"><span class="status" id="status"></span></div>
     </section>
   </div>
 </div>
@@ -723,7 +736,6 @@ function openInvite() {
     if (busy) return;
     if (!keyOk()) return note(`Add your ${prov().label} API key in Settings first.`, true);
     if (!state.topic.trim()) return note("Give the episode a topic first, so the AI knows who to look for.", true);
-    if (replace && !confirm("Replace the whole cast with the characters the AI invites?")) return;
     busy = true; q(".go").disabled = true; q(".go").innerHTML = '<span class="spinner light"></span>Casting…'; note("");
     try {
       const res = await post("/api/podcast/invite", {
@@ -874,12 +886,15 @@ function setStatus(msg, err) { $("status").textContent = msg || ""; $("status").
 function setControls() {
   if (!status) return;
   const r = show.running, ok = keyOk();
-  $("startBtn").innerHTML = ICON_PLAY + (show.turns.length && show.record && !r ? "Resume" : "Start");
+  const startLabel = show.turns.length && show.record ? "Resume" : "Start";
+  $("startBtn").innerHTML = ICON_PLAY; $("startBtn").title = startLabel; $("startBtn").setAttribute("aria-label", startLabel);
   $("startBtn").disabled = r || !ok;
-  $("pauseBtn").innerHTML = show.paused ? ICON_PLAY + "Resume" : ICON_PAUSE + "Pause";
+  $("pauseBtn").innerHTML = show.paused ? ICON_PLAY : ICON_PAUSE;
+  $("pauseBtn").title = show.paused ? "Carry on" : "Pause"; $("pauseBtn").setAttribute("aria-label", $("pauseBtn").title);
   // Only what you can use right now is on screen: Start before a show, Pause and Stop during it, downloads after it.
   $("startBtn").hidden = r;
-  $("pauseBtn").hidden = $("stopBtn").hidden = $("live").hidden = $("steer").hidden = !r;
+  $("pauseBtn").hidden = $("stopBtn").hidden = $("micBtn").hidden = $("live").hidden = $("steer").hidden = !r;
+  $("foot").hidden = !r && view === "orb"; // the orb's caption shows the status between shows
   $("noteInput").disabled = $("noteBtn").disabled = !r;
   $("micBtn").disabled = !r || !sttReady || mic.busy;
   $("micBtn").title = !sttReady ? "Talking to the show needs the speech model: download it in Settings" : mic.on ? "Send it now" : "Talk instead of typing (the characters stop and listen)";
@@ -1670,6 +1685,7 @@ let view = store.get("view", "orb");
 function renderView() {
   seg($("viewSeg"), [["orb", "Orb"], ["thread", "Thread"]], view, (v) => { view = v; store.set("view", v); renderView(); });
   $("stage").hidden = view !== "orb";
+  setControls();
   $("transcript").hidden = $("vizWrap").hidden = view !== "thread";
   if (view === "thread") scrollDown();
 }
