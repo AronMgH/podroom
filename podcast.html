@@ -983,7 +983,7 @@ async function sampleLine(c, btn, out) {
 
 // ===== the show =====================================================================================
 const sampleSession = crypto.randomUUID();
-const show = { session: null, running: false, heard: 0, closeTries: 0, paused: false, epoch: 0, turns: [], nextTime: 0, thinkingEl: null, usage: { in: 0, out: 0 },
+const show = { session: null, running: false, heard: 0, closeTries: 0, closeAsked: false, paused: false, epoch: 0, turns: [], nextTime: 0, thinkingEl: null, usage: { in: 0, out: 0 },
   calls: [], lastCut: -99, ttsBusy: false, clips: {}, wps: {}, floor: null, floorEnd: -99 };
 window.podroomBusy = () => show.running; // the sidebar asks before you leave a playing episode
 // Calls-per-minute budget: at most rpm AI calls in any 60 seconds.
@@ -1060,7 +1060,7 @@ async function start() {
   show.part = resume ? show.record.planPart || 0 : 0; show.partStart = null; show.replanning = false;
   show.youHere = you().here !== false; show.event = null; show.askAngle = ""; show.awaitingAngle = ""; show.replanWait = null;
   show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
-  $("clock").textContent = "0:00"; show.heard = 0; show.signedOff = false; show.closeTries = 0;
+  $("clock").textContent = "0:00"; show.heard = 0; show.signedOff = false; show.closeTries = 0; show.closeAsked = false;
   show.running = true; show.epoch++;
   show.session = crypto.randomUUID(); // one conversation ID per session, for providers that route by session
   if (resume) saveRecord(true); else newRecord();
@@ -1381,6 +1381,13 @@ function episodePhase() {
   return plannedSecs() >= (state.settings.minutes || 10) * 60 - 20 ? "close" : "normal";
 }
 
+function closingAnswerer(last) {
+  if (show.closeAsked || !last || last.human || last.restored || last.phase === "close") return null;
+  const host = cast().find((c) => c.role === "host");
+  if (last.name !== host?.name || !/\?/.test(last.text.slice(-200))) return null;
+  return cast().find((c) => c.name !== host.name && mentions(last.text.slice(-200), [c])) || null;
+}
+
 async function loop(ep) {
   const s = state.settings;
   try {
@@ -1390,8 +1397,11 @@ async function loop(ep) {
       await waitUntil(() => !alive(ep) || !prev || (prev.start !== null && ctx.currentTime >= prev.start));
       if (!alive(ep)) return;
 
-      const phase = episodePhase();
-      const { speaker, intent, wantsCut, floor, event } = await chooseNext(phase, ep);
+      let phase = episodePhase();
+      // Time is up while the host's question to a guest is still hanging: the guest answers briefly first, then the host signs off.
+      const answerer = phase === "close" ? closingAnswerer(prev) : null;
+      if (answerer) { phase = "normal"; show.closeAsked = true; }
+      const { speaker, intent, wantsCut, floor, event } = answerer ? { speaker: answerer, wantsCut: false } : await chooseNext(phase, ep);
       if (!alive(ep)) return;
       // No cutting in once the episode is winding down: the host is steering home.
       const windingDown = timeLeft() < Math.max(30, Math.min(90, 0.15 * (s.minutes || 10) * 60));

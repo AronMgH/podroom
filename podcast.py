@@ -622,11 +622,14 @@ def stalled(transcript, cast, user=None):
     return len(cast) >= 3 and len(last) == 4 and user not in names and len(names) == 2
 
 
-def user_prompt(me, transcript):
+def user_prompt(me, transcript, phase="normal"):
     if not transcript:
         return f'The recording has started. Say {me["name"]}\'s first line.'
     convo = "\n".join(f'{t["name"]}: {t["text"]}' for t in transcript[-40:])
     last = transcript[-1]
+    if phase == "close":  # last in the prompt, so it wins over "carry on from your last words"
+        return (f"Conversation so far:\n{convo}\n\nThe episode is over. Say {me['name']}'s sign-off now: no question, no new topic, "
+                "just a short thank-you to everyone and a goodbye to the listeners.")
     if last["name"] == me["name"]:  # holding the floor: carry on from their own last words
         return f"Conversation so far:\n{convo}\n\nSay {me['name']}'s next part, carrying straight on from where they left off."
     return (f"Conversation so far:\n{convo}\n\nThe last thing said was {last['name']}: \"{last['text']}\"\n"
@@ -659,12 +662,25 @@ def clean(text, me, cast):
     return text
 
 
-SIGN_OFF = re.compile(r"\b(thank|thanks|goodbye|bye|see you|until next|take care|signing off|that's (all|it) for|catch you)\b", re.I)
+SIGN_OFF = re.compile(r"\b(goodbye|bye|see you|until next|take care|signing off|that's (all|it) for|catch you|thanks for listening|thank you for listening)\b", re.I)
+SENTENCES = re.compile(r"(?<![A-Z][a-z]\.)(?<!\b[A-Z]\.)(?<!\b(?:Mr|Ms|Dr|St|vs)\.)(?<!\bMrs\.)(?<!\bProf\.)(?<!\betc\.)(?<=[.!?])[\"')\]]*\s+(?=[\"'(]?[A-Z0-9])")
 
 
 def signs_off(text):
-    """Whether a sign-off line actually thanks people or says goodbye."""
+    """Whether a sign-off line actually says goodbye."""
     return bool(SIGN_OFF.search(text))
+
+
+def finish_close(text, names):
+    """The sign-off never asks anything and always says goodbye: questions are dropped, and when the model still forgot
+    to say goodbye, a short thank-you and goodbye is added."""
+    parts = [p.strip() for p in SENTENCES.split(text) if p.strip()]
+    kept = [p for p in parts if not p.rstrip("\"')]").endswith("?")]
+    text = " ".join(kept)
+    if not signs_off(text):
+        who = " and ".join(names) if len(names) < 3 else ", ".join(names[:-1]) + " and " + names[-1]
+        text = (text + " " if text else "") + (f"Thank you, {who}, and thank you for listening. Goodbye!" if who else "Thank you for listening. Goodbye!")
+    return text
 
 
 def limit_sentences(text, n, keep_end=False):
@@ -776,7 +792,7 @@ def generate_turn(req):
                                                     req.get("cutIn"), user,
                                                     turn_cues(me, cast, transcript, user, req.get("intent"), _agenda(req), phase, user_here, event),
                                                     floor, pick_next, user_here)},
-        {"role": "user", "content": user_prompt(me, transcript)},
+        {"role": "user", "content": user_prompt(me, transcript, phase)},
     ]
     stop = [f"\n{n}:" for n in others + ([user] if user else [])][:4]  # four is the most every provider accepts
     data, model, name = chat(req, messages, spec[1] + (15 if pick_next else 0), req.get("temperature", 1.0), stop)
@@ -794,6 +810,8 @@ def generate_turn(req):
                                    or bool(transcript) and transcript[-1]["name"] == user)
     to_you = bool(user) and user_here and phase != "close" and (asks_user(text, user)
                                                   or bool(talks_to_you and re.search(r"\[\s*handover\s*\]", raw, re.I)))
+    if phase == "close" and text:
+        text = finish_close(text, others)
     if not text:
         if choice.get("finish_reason") == "length":
             raise RuntimeError(f"{model} spent its whole reply budget thinking. Pick a faster model.")
