@@ -243,6 +243,9 @@ def episode_text(rec):
         if kind == "note":  # older episodes: a private note to the characters
             out.append(f"[Note: {e.get('text', '')}]\n")
             continue
+        if kind == "event":  # you joined or left the table
+            out.append(f"[{e.get('name', 'You')} {e.get('text', '')}]\n")
+            continue
         who = e.get("name", "?") + (" (you)" if kind in ("you", "onair") else "")
         text = e.get("cut") or e.get("text", "")
         tags = []
@@ -450,7 +453,7 @@ class RateLimited(RuntimeError):
         self.retry_after = retry_after
 
 
-def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, cues=(), floor=None, pick_next=False):
+def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, cues=(), floor=None, pick_next=False, user_here=True):
     spec = LENGTHS[length] if isinstance(length, str) else length
     others = [c for c in cast if c["name"] != me["name"]]
     host = me.get("role") == "host"
@@ -472,9 +475,12 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
             if host and c.get("persona", "").strip():
                 intro = ": " + re.split(r"(?<=[.!?])\s", c["persona"].strip())[0]
             lines.append(f'- {c["name"]}, the {c.get("role", "guest")}{intro}')
-    if user:
+    if user and user_here:
         lines.append(f"- {user}: a real person at the table with you, and the one running this show. They join in whenever "
                      "they like. What they ask for happens, immediately.")
+    elif user:
+        lines.append(f"- {user}: runs this show, but is not at the table right now. Do not talk to them or hand over to them: "
+                     "the show carries on without them.")
     lines += [
         f"Today's topic: {topic.strip()}",
         "Nobody has planned where this conversation goes. Follow it wherever it leads. Change your mind only when someone gives you "
@@ -501,7 +507,7 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
            "takes the conversation somewhere new. Never treat their request as a distraction. Talk to them directly, by name, "
            "like anyone else at the table.",
            f"- When your line hands the conversation to {user} (you ask them something, or ask them to go on or finish "
-           "their thought), end it with the tag [HANDOVER]. Nobody else speaks until they answer."] if user else []),
+           "their thought), end it with the tag [HANDOVER]. Nobody else speaks until they answer."] if user and user_here else []),
     ]
     if floor:
         lines.append("- You are holding the floor: you are talking, not interviewing. Do not greet anyone, do not ask the others "
@@ -556,9 +562,23 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
     return "\n".join(lines)
 
 
-def turn_cues(me, cast, transcript, user, intent=None, agenda=None, phase="normal"):
+EVENTS = {
+    "join": "{user} has just joined the table. Welcome them by name in a sentence, catch them up in a few words on where the "
+            "conversation is, and invite them in.",
+    "leave": "{user} has just stepped away from the table. Mention it in passing in a few words, the way a real host would, and carry "
+             "on the conversation without them.",
+    "noAnswer": "{user} has not answered your question, so do not wait: say you will go with the plan, and start on it.",
+    "answered": "{user} has answered your question, and the plan now follows their answer. Thank them in a few words and start on it.",
+}
+
+
+def turn_cues(me, cast, transcript, user, intent=None, agenda=None, phase="normal", user_here=True, event=None):
     """Short situational hints: answer a direct question, and (for the host) bring in whoever has gone quiet."""
     cues = []
+    if event in EVENTS and user and me.get("role") == "host":
+        cues.append(EVENTS[event].format(user=user))
+    if not user_here:
+        user = None  # away: nothing they said earlier is a request to act on now
     if transcript:
         last = transcript[-1]
         if last["name"] != me["name"] and re.search(rf"\b{re.escape(me['name'])}\b", last["text"]) and "?" in last["text"]:
@@ -710,6 +730,8 @@ def generate_turn(req):
     phase = req.get("phase", "normal")
     transcript = req.get("transcript", [])
     user = (req.get("user") or "").strip() or None
+    user_here = req.get("userPresent") is not False
+    event = req.get("event") if req.get("event") in EVENTS else None
     floor = req.get("floor") if isinstance(req.get("floor"), dict) and req["floor"].get("mode") in ("start", "continue", "last") else None
     spec = LENGTHS[length]
     # Smart turn-taking: the speaker also names who goes next, so a line needs one AI call, not two.
@@ -730,7 +752,8 @@ def generate_turn(req):
     messages = [
         {"role": "system", "content": system_prompt(me, cast, req.get("show", "the show"), req.get("topic", ""), spec, phase,
                                                     req.get("cutIn"), user,
-                                                    turn_cues(me, cast, transcript, user, req.get("intent"), _agenda(req), phase), floor, pick_next)},
+                                                    turn_cues(me, cast, transcript, user, req.get("intent"), _agenda(req), phase, user_here, event),
+                                                    floor, pick_next, user_here)},
         {"role": "user", "content": user_prompt(me, transcript)},
     ]
     stop = [f"\n{n}:" for n in others + ([user] if user else [])][:4]  # four is the most every provider accepts
@@ -747,7 +770,7 @@ def generate_turn(req):
     # only counts when the line talks to you (names you, or answers you), since models also tag questions meant for another guest.
     talks_to_you = bool(user) and (re.search(rf"\b{re.escape(user)}\b", text, re.I) is not None
                                    or bool(transcript) and transcript[-1]["name"] == user)
-    to_you = bool(user) and phase != "close" and (asks_user(text, user)
+    to_you = bool(user) and user_here and phase != "close" and (asks_user(text, user)
                                                   or bool(talks_to_you and re.search(r"\[\s*handover\s*\]", raw, re.I)))
     if not text:
         if choice.get("finish_reason") == "length":
@@ -801,7 +824,8 @@ def direct(req):
     candidates = [c for c in cast if c["name"] != last]
     if not candidates:
         raise ValueError("nobody to pick")
-    by_boss = bool(user) and last == user  # your word is in play
+    here = req.get("userPresent") is not False
+    by_boss = bool(user) and here and last == user  # your word is in play
     if FAKE:
         pick = random.choice(candidates)
         floor = pick.get("longest", 0) if random.random() < 0.3 else 0
@@ -817,12 +841,13 @@ def direct(req):
         f'You direct a live, unscripted audio podcast called "{req.get("show", "the show")}". Today\'s topic: {req.get("topic", "").strip()}',
         "The people at the table:",
         sheet,
+        *([f"- {user}: runs the show but is away from the table right now. Never pick them."] if user and not here else []),
         *([f"- {user}: a real person at the table who runs the show and joins in whenever they like. Never pick them.",
            "",
            f"{user}'s word is final. If their latest message asks for something, such as who should speak, who should take "
            "the stage or continue for some minutes, or to move on from a subject, do exactly that: pick that person and make "
            "the intent carry it out. Never treat it as a distraction. If they spoke without naming anyone, pick whoever "
-           "should answer them."] if user else []),
+           "should answer them."] if user and here else []),
         "Read the conversation and decide who would naturally speak next, the way a real conversation flows: "
         "whoever was just asked something, whoever the last line most provokes or concerns given who they are, "
         "or whoever has a direct answer to the point on the table. The host steps in to move things on or to bring "
@@ -904,6 +929,8 @@ def plan_episode(req):
     if not topic:
         raise ValueError("no topic to plan")
     user = (req.get("user") or "").strip() or None
+    if req.get("userPresent") is False:
+        user = None  # away: not at the table, and nobody to ask
     current = _clean_segments(req.get("current")) if isinstance(req.get("current"), list) else None
     part = _clamp_int(req.get("part"), 0, 5, 0)
     try:

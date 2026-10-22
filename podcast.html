@@ -128,7 +128,9 @@
   .now .clock b { color: var(--text); font-weight: 600; }
   .dock { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 14px 20px 6px; }
   .dock-mid { display: flex; align-items: center; gap: 16px; }
-  .dock #restartBtn { justify-self: end; }
+  .dock #restartBtn { justify-self: end; grid-column: 3; }
+  .dock #presenceBtn { justify-self: start; grid-column: 1; }
+  .dock .dock-mid { grid-column: 2; }
   button.ctl {
     width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: none; cursor: pointer; padding: 0;
     color: var(--text); background: var(--glass-2); border: 1px solid var(--edge); transition: background .15s, transform .1s;
@@ -236,6 +238,9 @@
   @keyframes recpulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 18%, transparent); } }
   .crow.me .role { color: var(--text); }
   .crow.me .avatar svg { width: 16px; height: 16px; }
+  .crow.me.off .avatar, .crow.me.off .info { opacity: .45; }
+  .crow.me .here { font-size: 12px; padding: 5px 10px; }
+  .turn-note { align-self: center; font-size: 12px; color: var(--faint); padding: 2px 12px; border: 1px solid var(--edge); border-radius: 999px; }
   .foot { display: flex; justify-content: center; padding: 8px 18px 16px; min-height: 38px; }
   .foot .status { color: var(--muted); font-size: 13px; text-align: center; }
   .foot .status.err { color: var(--danger); }
@@ -315,7 +320,7 @@
       </div>
       <!-- The controls, like a player's, under the title: only the big play button before a show, then stop, pause and the mic. -->
       <div class="dock">
-        <span></span>
+        <button class="btn ghost" id="presenceBtn" hidden></button>
         <div class="dock-mid">
         <button class="ctl" id="stopBtn" hidden title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
         <button class="ctl main" id="startBtn"></button>
@@ -596,11 +601,14 @@ function renderCast() {
   const box = $("cast"); box.innerHTML = "";
   const me = you();
   const meRow = document.createElement("div");
-  meRow.className = "crow me"; meRow.style.setProperty("--c", YOU_COLOR);
+  const here = me.here !== false;
+  meRow.className = "crow me" + (here ? "" : " off"); meRow.style.setProperty("--c", YOU_COLOR);
   meRow.innerHTML = `<span class="avatar" style="--c:${YOU_COLOR}">${ICON_MIC}</span>
     <div class="info"><div class="nm">${esc(me.name || "Add your name")}<span class="role">You · in charge</span></div>
-    <div class="sub">Type or talk from the studio box: they stop, listen and do what you ask</div></div>`;
-  meRow.onclick = openYouEditor;
+    <div class="sub">${here ? "At the table: type or talk, and they stop, listen and do what you ask" : "Not on the show: they talk among themselves"}</div></div>
+    <div class="acts"><button class="btn ghost here" title="Whether you sit at the table in this episode. You can also join or leave during the show.">${here ? "On the show" : "Off the show"}</button></div>`;
+  meRow.onclick = (e) => { if (!e.target.closest("button")) openYouEditor(); };
+  meRow.querySelector(".here").onclick = () => { me.here = !here; save(); renderCast(); };
   box.appendChild(meRow);
   state.characters.forEach((c, i) => {
     const color = COLORS[i % COLORS.length];
@@ -981,7 +989,11 @@ function setControls() {
   $("pauseBtn").title = show.paused ? "Carry on" : "Pause"; $("pauseBtn").setAttribute("aria-label", $("pauseBtn").title);
   // Only what you can use right now is on screen: Start before a show, Pause and Stop during it, downloads after it.
   $("startBtn").hidden = r;
-  $("pauseBtn").hidden = $("stopBtn").hidden = $("micBtn").hidden = $("live").hidden = $("steer").hidden = !r;
+  $("pauseBtn").hidden = $("stopBtn").hidden = $("live").hidden = !r;
+  $("micBtn").hidden = $("steer").hidden = !r || !show.youHere; // away from the table: nothing to say
+  $("presenceBtn").hidden = !r;
+  $("presenceBtn").textContent = show.youHere ? "Leave the table" : "Join the table";
+  $("presenceBtn").title = show.youHere ? "Step away: the show carries on without you" : "Sit down at the table: they will welcome you in";
   $("restartBtn").hidden = !show.turns.length; // start over: there is something to start over from
   $("restartBtn").disabled = !ok;
   $("foot").hidden = !r && view === "orb"; // the orb's caption shows the status between shows
@@ -1027,6 +1039,7 @@ async function start() {
   }
   show.base = show.turns.length; show.baseTokens = resume ? show.record.tokens || 0 : 0;
   show.part = resume ? show.record.planPart || 0 : 0; show.partStart = null; show.replanning = false;
+  show.youHere = you().here !== false; show.event = null;
   show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
   $("clock").textContent = "0:00"; show.signedOff = false;
   show.running = true; show.epoch++;
@@ -1186,6 +1199,7 @@ async function chooseNext(phase, ep) {
   const host = people.find((c) => c.role === "host") || people[0];
   const last = show.turns[show.turns.length - 1];
   if (phase === "close" || aiCount() === 0) show.floor = null;
+  if (show.event && (phase === "normal" || phase === "reopen")) return { speaker: host, event: show.event.kind, wantsCut: false };
   if (show.floor) {
     const c = people.find((x) => x.name === show.floor.name);
     if (c && show.floor.secs - show.floor.used >= 12) return { speaker: c, floor: floorPlan() };
@@ -1225,7 +1239,7 @@ async function chooseNext(phase, ep) {
     show.floorAsked = show.turns.length;
     try {
       const res = await post("/api/podcast/next", {
-        characters: people, show: state.show, topic: state.topic, user: you().name,
+        characters: people, show: state.show, topic: state.topic, user: you().name, userPresent: show.youHere,
         transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })), agenda: agendaNow() || undefined,
         provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session,
       }, AbortSignal.timeout(bossed ? 20000 : 10000));
@@ -1258,7 +1272,7 @@ async function requestPlan(ep) {
   show.calls.push(performance.now());
   try {
     const res = await post("/api/podcast/plan", { characters: cast(), show: state.show, topic: state.topic, minutes: state.settings.minutes,
-      user: you().name, provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session });
+      user: you().name, userPresent: show.youHere, provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session });
     const d = await res.json().catch(() => ({}));
     if (!alive(ep) || !res.ok || !d.segments?.length) return; // without a plan the host still keeps the time
     if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
@@ -1275,7 +1289,7 @@ async function replan(note, ep) {
   setStatus("The host is changing the plan…");
   try {
     const res = await post("/api/podcast/plan", { characters: cast(), show: state.show, topic: state.topic, user: you().name,
-      minutes: state.settings.minutes, elapsed: plannedSecs() / 60, current: show.record.plan, part: show.part, note,
+      userPresent: show.youHere, minutes: state.settings.minutes, elapsed: plannedSecs() / 60, current: show.record.plan, part: show.part, note,
       transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })),
       provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session });
     const d = await res.json().catch(() => ({}));
@@ -1349,7 +1363,7 @@ async function loop(ep) {
       if (!alive(ep)) return;
 
       const phase = episodePhase();
-      const { speaker, intent, wantsCut, floor } = await chooseNext(phase, ep);
+      const { speaker, intent, wantsCut, floor, event } = await chooseNext(phase, ep);
       if (!alive(ep)) return;
       const cut = phase === "normal" && !floor ? planInterruption(prev, speaker, wantsCut) : null;
       if (phase === "open") { // the host opens with the plan: wait for it, but never for long
@@ -1364,11 +1378,12 @@ async function loop(ep) {
       const data = await askAI({
         characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase,
         transcript: show.turns.map((t) => ({ name: t.name, text: t === prev && cut ? cut.text : t.llmText ?? t.text })),
-        cutIn: cut ? prev.name : null, user: you().name, intent, floor: floor || undefined,
+        cutIn: cut ? prev.name : null, user: you().name, userPresent: show.youHere, event: event || undefined, intent, floor: floor || undefined,
         pickNext: s.turnMode === "smart" || undefined, agenda: agenda || undefined, length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
       }, ep);
       if (!alive(ep)) return;
       if (data.usage) { show.usage.in += data.usage.in; show.usage.out += data.usage.out; }
+      if (event && show.event?.kind === event) show.event = null; // said it: the welcome or the goodbye is done
       // The host has just closed a part whose time was up (unless they were answering you): on to the next one.
       if (agenda?.wrap && speaker.role === "host" && !floor && !data.replan) nextPart();
       if (data.replan) replan(data.replan, ep); // the host changed course or timing: redo the plan from here, in the background
@@ -1390,7 +1405,7 @@ async function loop(ep) {
       // How long the AI took and how much silence that left, in the console for anyone tuning speed.
       console.info(`[podroom] line ${show.turns.indexOf(turn) + 1} ${speaker.name}: AI ${turn.aiMs} ms, extra silence ${(turn.late || 0).toFixed(1)} s`
         + (data.next ? `, picks ${data.next}` : ""));
-      if (data.toYou && phase !== "close") return yourTurn(turn, ep);
+      if (data.toYou && phase !== "close" && show.youHere) return yourTurn(turn, ep);
       if (phase === "close") show.signedOff = true;
     }
     if (!alive(ep)) return;
@@ -1557,6 +1572,29 @@ function youSay(text) {
   loop(show.epoch);
 }
 
+// Join or leave the table during the show. Whatever was queued is dropped, so the host reacts straight away:
+// a welcome and a catch-up when you sit down, a word in passing when you step out. A wait for your answer ends.
+function togglePresence() {
+  if (!show.running) return;
+  show.youHere = !show.youHere;
+  if (!show.youHere && mic.on) finishMic(); // a half-spoken line is dropped, not sent
+  const name = you().name || "You", text = show.youHere ? "joined the table" : "left the table";
+  logEntry({ type: "event", name, text });
+  noteInThread(`${name} ${text}`);
+  show.event = { kind: show.youHere ? "join" : "leave" };
+  setStatus(show.youHere ? "You are at the table." : "You left the table: the show carries on without you.");
+  setControls();
+  dropQueued();
+  show.epoch++;
+  loop(show.epoch);
+}
+function noteInThread(text) {
+  const el = document.createElement("div");
+  el.className = "turn-note"; el.textContent = text;
+  if (show.thinkingEl) $("transcript").insertBefore(el, show.thinkingEl); else $("transcript").appendChild(el);
+  scrollDown();
+}
+
 function renderBoxHint() {
   $("noteInput").placeholder = `Talk to them${you().name ? ` as ${you().name}` : ""}: type here or click the mic…`;
 }
@@ -1689,7 +1727,7 @@ async function finishMic() {
   m.media.getTracks().forEach((t) => t.stop());
   m.ac.close();
   $("micBtn").classList.remove("rec");
-  if (!show.running) return;
+  if (!show.running || !show.youHere) return; // stopped, or you left the table: nothing to send
   m.busy = true; $("micBtn").classList.add("busy"); setControls();
   try {
     const text = m.heard ? await sttRequest(micAudio(m)) : "";
@@ -1784,6 +1822,7 @@ function saveRecord(now) {
 }
 
 $("startBtn").onclick = start;
+$("presenceBtn").onclick = togglePresence;
 // Start over: the same topic and guests from the top, as a new episode. The old one stays in the sidebar.
 $("restartBtn").onclick = () => {
   if (show.running) stopShow();
