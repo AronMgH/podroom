@@ -572,6 +572,9 @@ EVENTS = {
              "on the conversation without them.",
     "noAnswer": "{user} has not answered your question, so do not wait: say you will go with the plan, and start on it.",
     "answered": "{user} has answered your question, and the plan now follows their answer. Thank them in a few words and start on it.",
+    "next": "{user} asked to move on, so the show has moved to the next part of the run of show. Say so in a few words, then "
+            "start on it and bring in a guest by name. Do not go back to the last part.",
+    "replanned": "{user} asked to change the plan, and the run of show now follows what they asked. Say so in a few words and start on it.",
 }
 
 
@@ -597,7 +600,9 @@ def turn_cues(me, cast, transcript, user, intent=None, agenda=None, phase="norma
                         "directly. If they asked someone else, give way with one short line.")
     if intent:
         cues.append(f"What you want to do now: {intent}")
-    cues += agenda_cues(me, agenda, phase, user, bool(user and transcript and transcript[-1]["name"] == user))
+    # When what you said was the plan change itself, the page has made it already: the event says so.
+    spoke = bool(user and transcript and transcript[-1]["name"] == user) and event not in ("next", "replanned")
+    cues += agenda_cues(me, agenda, phase, user, spoke)
     if stalled(transcript, cast, user):
         a, b = sorted({t["name"] for t in transcript[-4:]})
         if me.get("role") == "host":
@@ -940,6 +945,72 @@ def direct(req):
     usage = data.get("usage", {})
     return {"next": pick["name"], "intent": str(out.get("intent") or "").strip()[:200], "cutIn": out.get("cutIn") is True and not floor,
             "floor": floor, "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
+
+
+# ---- your instructions -----------------------------------------------------------------
+# Some of what you say is about the show itself, not something a character can do with words: be quiet, stop,
+# end the episode, skip to the next part, change the plan. One small call reads what you said since the last
+# line and names the action, and the page carries it out, whatever the characters would have said about it.
+
+STEER_ACTIONS = ("none", "quiet", "stop", "end", "next", "replan")
+
+
+def fake_steer(text):
+    """Keyword guesses for testing without a key, latest instruction first."""
+    rules = [("stop", r"\bstop (the )?(show|recording|podcast)\b|\bcut it\b"),
+             ("quiet", r"\b(don'?t|do not) (reply|respond|answer|talk|say)|\bbe quiet\b|\bshut up\b|\bstop talking\b|\bhush\b|\bsilence\b"),
+             ("end", r"\b(end|finish|close|wrap up)\b.*\b(podcast|show|episode)\b|\bwrap (it )?up\b"),
+             ("next", r"\b(skip|move on|next (topic|part))\b"),
+             ("replan", r"\b(keep|stay on|more time|less time|longer|shorter)\b")]
+    for line in reversed(text):
+        for action, pattern in rules:
+            if re.search(pattern, line, re.I):
+                return action
+    return "none"
+
+
+def steer(req):
+    user = (req.get("user") or "").strip() or "the person running the show"
+    said = [str(x).strip()[:400] for x in (req.get("said") or []) if str(x).strip()][-4:]
+    if not said:
+        return {"action": "none", "note": ""}
+    if FAKE:
+        return {"action": fake_steer(said), "note": said[-1]}
+    agenda = _agenda(req)
+    where = ""
+    if agenda and agenda["title"]:
+        where = (f'The show is in part {agenda["part"]} of {agenda["parts"]} of its plan, "{agenda["title"]}". '
+                 + (f'The next part is "{agenda["next"]}".' if agenda["next"] else "This is the last part: there is no next one."))
+    convo = "\n".join(f'{t.get("name")}: {t.get("text")}' for t in (req.get("transcript") or [])[-6:] if isinstance(t, dict))
+    system = "\n".join([
+        f'{user} runs a live, unscripted audio podcast called "{req.get("show") or "the show"}" and sits at the table with the AI '
+        f"characters. The characters answer whatever {user} says. Your only job is to spot instructions about the show itself, "
+        "which words alone cannot carry out, and name the action:",
+        "- quiet: nobody should speak or reply for now (be quiet, stop talking, don't reply, don't respond to anyone, hush, "
+        "give me a moment, or just \"stop\" or \"wait\"). Nobody says anything, not even an acknowledgement, until they speak again.",
+        "- stop: they clearly want the recording itself stopped right now, with no goodbye (stop the recording, stop the show now).",
+        "- end: wrap up the episode: the host signs off now (end the podcast, let's finish, that's enough for today).",
+        "- next: leave the current part and move to the next part of the plan (skip this, next topic, move on).",
+        "- replan: change the plan some other way: stay longer on this, a different direction or topic, more or less time "
+        "for a part, a longer or shorter episode.",
+        "- none: anything else, such as a question, an opinion, a complaint about how someone talks, or a request a character "
+        "can do with words (tell a joke, laugh, explain it simply, say a word).",
+        where,
+        f"If {user} said several things, the latest instruction wins. Their words come from speech recognition, so expect "
+        "typos and misheard names.",
+        'Reply with JSON only: {"action": "<none|quiet|stop|end|next|replan>", "note": "<for replan: what they want, in a few words>"}',
+    ])
+    lines = "\n".join(f"- {x}" for x in said)
+    messages = [{"role": "system", "content": system},
+                {"role": "user", "content": f"Recent conversation:\n{convo or '(nothing yet)'}\n\nWhat {user} just said, oldest first:\n{lines}\n\nJSON only."}]
+    data, _, name = chat(req, messages, 80, 0, timeout=15)
+    raw = re.sub(r"(?s)<think>.*?(</think>|$)", "", data["choices"][0]["message"].get("content") or "")
+    m = re.search(r"\{.*\}", raw, re.S)
+    out = json.loads(m.group(0)) if m else {}
+    action = str(out.get("action") or "").strip().lower()
+    usage = data.get("usage", {})
+    return {"action": action if action in STEER_ACTIONS else "none", "note": str(out.get("note") or "").strip()[:300],
+            "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
 
 
 # ---- the run of show ---------------------------------------------------------------------

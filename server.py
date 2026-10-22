@@ -361,6 +361,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"director: {e}", file=sys.stderr, flush=True)
                 self.send_json(502, {"error": str(e)})
+        elif self.path == "/api/podcast/steer":
+            try:
+                self.send_json(200, podcast.steer(self.read_json()))
+            except podcast.RateLimited as e:
+                self.send_json(429, {"error": str(e)})
+            except Exception as e:
+                print(f"steer: {e}", file=sys.stderr, flush=True)
+                self.send_json(502, {"error": str(e)})
         elif self.path == "/api/podcast/turn":
             self.turn()
         elif self.path == "/api/podcast/sample":

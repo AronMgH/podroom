@@ -1060,7 +1060,7 @@ async function start() {
   show.part = resume ? show.record.planPart || 0 : 0; show.partStart = null; show.replanning = false;
   show.youHere = you().here !== false; show.event = null; show.askAngle = ""; show.awaitingAngle = ""; show.replanWait = null;
   show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
-  $("clock").textContent = "0:00"; show.heard = 0; show.signedOff = false; show.closeTries = 0; show.closeAsked = false;
+  $("clock").textContent = "0:00"; show.heard = 0; show.signedOff = false; show.closeTries = 0; show.closeAsked = false; show.ending = false; show.quiet = false;
   show.running = true; show.epoch++;
   show.session = crypto.randomUUID(); // one conversation ID per session, for providers that route by session
   if (resume) saveRecord(true); else newRecord();
@@ -1376,6 +1376,7 @@ function updatePart() {
 // Where the episode is: the host opens, and once the audio already queued reaches the chosen length
 // (less a line's worth), the host signs off, taking the time that needs even if it runs a little over.
 function episodePhase() {
+  if (show.ending) return "close"; // you asked to end the episode
   if (aiCount() === 0) return "open";
   if (show.reopen && !show.turns.slice(show.base).some((t) => !t.human)) return "reopen"; // back after a break
   return plannedSecs() >= (state.settings.minutes || 10) * 60 - 20 ? "close" : "normal";
@@ -1401,8 +1402,22 @@ async function loop(ep) {
       // Time is up while the host's question to a guest is still hanging: the guest answers briefly first, then the host signs off.
       const answerer = phase === "close" ? closingAnswerer(prev) : null;
       if (answerer) { phase = "normal"; show.closeAsked = true; }
-      const { speaker, intent, wantsCut, floor, event } = answerer ? { speaker: answerer, wantsCut: false } : await chooseNext(phase, ep);
+      // What you said since the last line is read for an instruction about the show while the next speaker is picked.
+      const [cmd, choice] = await Promise.all([steerYou(ep), answerer ? { speaker: answerer, wantsCut: false } : chooseNext(phase, ep)]);
       if (!alive(ep)) return;
+      let { speaker, intent, wantsCut, floor, event } = choice;
+      if (cmd.action === "quiet") return holdQuiet();
+      if (cmd.action === "stop") return stopShow();
+      if (cmd.action !== "none") { // end, next part or a new plan: the page does it, and the host says so
+        const plan = show.record?.plan;
+        speaker = theHost(); intent = undefined; wantsCut = false; floor = null; show.floor = null; event = undefined;
+        if (cmd.action === "end") { show.ending = true; phase = "close"; }
+        else if (cmd.action === "next" && plan && show.part < plan.length - 1) { nextPart(); event = "next"; }
+        else if (plan) { // more or less time, another direction, or moving on from the last part
+          show.replanWait = replan(cmd.note || cmd.said, ep, true);
+          event = "replanned";
+        }
+      }
       // No cutting in once the episode is winding down: the host is steering home.
       const windingDown = timeLeft() < Math.max(30, Math.min(90, 0.15 * (s.minutes || 10) * 60));
       const cut = phase === "normal" && !floor && !windingDown ? planInterruption(prev, speaker, wantsCut) : null;
@@ -1413,7 +1428,7 @@ async function loop(ep) {
         if (!alive(ep)) return;
       }
       if (show.replanWait) {
-        setStatus("Fitting the plan to your answer…");
+        setStatus("Changing the plan…");
         await Promise.race([show.replanWait, sleep(25000)]);
         show.replanWait = null;
         if (!alive(ep)) return;
@@ -1432,7 +1447,7 @@ async function loop(ep) {
       if (event && show.event?.kind === event) show.event = null; // said it: the welcome or the goodbye is done
       // The host has just closed a part whose time was up (unless they were answering you): on to the next one.
       if (agenda?.wrap && speaker.role === "host" && !floor && !data.replan) nextPart();
-      if (data.replan) replan(data.replan, ep); // the host changed course or timing: redo the plan from here, in the background
+      if (data.replan && cmd.action === "none") replan(data.replan, ep); // the host changed course or timing: redo the plan from here, in the background
       if (floor && show.floor?.name === speaker.name) { // count the time this part will take; end the floor when it is used up
         show.floor.used += data.text.split(/\s+/).length / wpsOf(speaker.name); show.floor.segs++;
         if (floor.finishing || show.floor.secs - show.floor.used < 12) { show.floor = null; show.floorEnd = show.turns.length + 1; }
@@ -1463,6 +1478,44 @@ async function loop(ep) {
     if (e.name === "AbortError" || !alive(ep)) return;
     endShow(`Stopped: ${e.message}`, true);
   }
+}
+
+// Your lines since the last character's line, read once for an instruction the page has to carry out itself:
+// quiet, stop, end the episode, the next part, or a new plan. It goes ahead of the calls-per-minute budget (and
+// counts in it, so the next line waits instead), and retries "too many requests", so "end the show" is never
+// held up or lost. If it fails anyway, the characters still answer what you said.
+async function steerYou(ep) {
+  const fresh = [];
+  for (let i = show.turns.length - 1; i >= 0 && show.turns[i].human; i--) {
+    if (!show.turns[i].steered && !show.turns[i].restored) fresh.unshift(show.turns[i]);
+  }
+  const none = { action: "none" };
+  if (!fresh.length) return none;
+  let d = {};
+  for (const wait of [3, 8, 0]) {
+    show.calls.push(performance.now());
+    try {
+      const res = await post("/api/podcast/steer", { user: you().name, said: fresh.map((t) => t.text), show: state.show,
+        transcript: show.turns.slice(-8).map((t) => ({ name: t.name, text: t.llmText ?? t.text })), agenda: agendaNow() || undefined,
+        provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session }, AbortSignal.timeout(20000));
+      if (res.ok) d = await res.json();
+      if (res.status !== 429 || !wait || !alive(ep)) break;
+    } catch { break; }
+    await sleep(wait * 1000);
+  }
+  if (!alive(ep)) return none; // you said more meanwhile: the next read takes all of it
+  for (const t of fresh) t.steered = true;
+  if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
+  if (d.action && d.action !== "none") console.info(`[podroom] your instruction: ${d.action}${d.note ? ` (${d.note})` : ""}`);
+  return { action: d.action || "none", note: d.note || "", said: fresh.at(-1).text };
+}
+const theHost = () => cast().find((c) => c.role === "host") || cast()[0];
+// You asked for quiet: nobody speaks, not even to say so, until you say something again.
+function holdQuiet() {
+  logEntry({ type: "event", name: you().name || "You", text: "asked for quiet" });
+  noteInThread("Quiet: nobody speaks until you do");
+  setStatus("Quiet. Nobody speaks until you say something.");
+  show.quiet = true;
 }
 
 // Waits out the calls-per-minute budget, then asks for a line. "Too many requests" waits and retries
@@ -1607,6 +1660,8 @@ function cutPlaying() {
 
 // You say something: it goes straight into the conversation (never voiced) and the characters answer it.
 function youSay(text) {
+  const answeringAngle = !!show.awaitingAngle;
+  if (show.quiet) { show.quiet = false; setStatus(""); }
   if (show.awaitingAngle) {
     const q = show.awaitingAngle; show.awaitingAngle = "";
     show.replanWait = replan(`${you().name || "The person running the show"} was asked "${q}" and answered: ${text}`, show.epoch, true);
@@ -1619,6 +1674,7 @@ function youSay(text) {
   const turn = { name: you().name, who: { ...you() }, text, human: true, pcm: [], sources: [], reactions: [], gain: null,
     start: now, end: now, done: true, abort: new AbortController(), el: null, cutsPrev: null };
   show.turns.push(turn);
+  turn.steered = answeringAngle; // your answer to the host's opening question already replans
   turn.entry = logEntry({ type: "you", name: turn.name, text });
   renderTurn(turn);
   show.epoch++;
