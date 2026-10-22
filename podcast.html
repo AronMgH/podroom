@@ -121,7 +121,9 @@
   .now .tools { display: flex; align-items: center; gap: 8px; flex: none; }
   .now .clock { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; margin-right: 4px; white-space: nowrap; }
   .now .clock b { color: var(--text); font-weight: 600; }
-  .dock { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 16px 18px 2px; }
+  .dock { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 14px 20px 6px; }
+  .dock-mid { display: flex; align-items: center; gap: 16px; }
+  .dock #restartBtn { justify-self: end; }
   button.ctl {
     width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: none; cursor: pointer; padding: 0;
     color: var(--text); background: var(--glass-2); border: 1px solid var(--edge); transition: background .15s, transform .1s;
@@ -158,6 +160,33 @@
   .cap-line.idle { font-size: 15px; color: var(--muted); }
   .cap-line.idle b { color: var(--text); font-weight: 600; margin-right: 6px; }
   .seats { display: flex; gap: 10px; }
+  [data-profile] { cursor: pointer; }
+  .bubble .who [data-profile]:hover, .cap-who [data-profile]:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  /* ---- profile: who someone is, on the right ------------------------------------------------------------ */
+  body.profile-open { padding-right: 384px; }
+  .profile {
+    position: fixed; inset: 0 0 0 auto; width: 360px; z-index: 45; display: flex; flex-direction: column; overflow-y: auto;
+    background: #0c0c0e; border-left: 1px solid var(--edge); animation: slidein .18s ease;
+  }
+  @keyframes slidein { from { transform: translateX(24px); opacity: 0; } }
+  .profile .ph { display: flex; justify-content: flex-end; align-items: center; height: 72px; padding: 0 16px; border-bottom: 1px solid var(--edge); flex: none; }
+  .profile .who { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px 22px 18px; text-align: center;
+    background: radial-gradient(90% 70% at 50% 0%, color-mix(in srgb, var(--c) 14%, transparent), transparent 70%); }
+  .profile .who .avatar { width: 76px; height: 76px; font-size: 30px; box-shadow: 0 0 34px color-mix(in srgb, var(--c) 45%, transparent); }
+  .profile .who .avatar svg { width: 30px; height: 30px; }
+  .profile h3 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+  .profile .tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .profile .tag { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+  .profile .acts { display: flex; gap: 8px; justify-content: center; padding: 0 22px 18px; }
+  .profile section { padding: 16px 22px; border-top: 1px solid var(--edge); }
+  .profile section h4 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+  .profile section p { margin: 0; font-size: 13.5px; line-height: 1.6; color: rgba(243, 243, 239, .86); white-space: pre-wrap; }
+  .profile dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; }
+  .profile dt { color: var(--faint); }
+  .profile dd { margin: 0; }
+  @media (max-width: 1100px) { body.profile-open { padding-right: 24px; } .profile { box-shadow: -20px 0 60px rgba(0, 0, 0, .6); } }
+  @media (max-width: 560px) { .profile { width: 100%; } }
   .seats .avatar { width: 34px; height: 34px; font-size: 13px; opacity: .4; transition: opacity .25s, transform .25s, box-shadow .25s; }
   .seats .avatar svg { width: 15px; height: 15px; }
   .seats .avatar.next { opacity: .75; }
@@ -279,6 +308,17 @@
           <div class="seg" id="viewSeg" style="flex:none;width:150px"></div>
         </div>
       </div>
+      <!-- The controls, like a player's, under the title: only the big play button before a show, then stop, pause and the mic. -->
+      <div class="dock">
+        <span></span>
+        <div class="dock-mid">
+        <button class="ctl" id="stopBtn" hidden title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+        <button class="ctl main" id="startBtn"></button>
+        <button class="ctl main" id="pauseBtn" hidden></button>
+        <button class="ctl" id="micBtn" hidden></button>
+        </div>
+        <button class="btn ghost" id="restartBtn" hidden title="The same topic and guests from the top, as a new episode">Start over</button>
+      </div>
       <div class="banner" id="keyBanner" hidden>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
         <span id="bannerText"></span>
@@ -299,19 +339,13 @@
         <input type="text" id="noteInput" maxlength="400" disabled>
         <button class="btn" id="noteBtn" disabled>Send</button>
       </div>
-      <!-- The controls, like a player's: only the big play button before a show, then stop, pause and the mic. -->
-      <div class="dock">
-        <button class="ctl" id="stopBtn" hidden title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
-        <button class="ctl main" id="startBtn"></button>
-        <button class="ctl main" id="pauseBtn" hidden></button>
-        <button class="ctl" id="micBtn" hidden></button>
-      </div>
       <div class="foot" id="foot"><span class="status" id="status"></span></div>
     </section>
   </div>
 </div>
 
 <div class="overlay" id="editor" hidden></div>
+<aside class="profile" id="profile" hidden aria-label="Profile"></aside>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -449,7 +483,12 @@ async function openEpisode(id) {
   if (!rec) return setStatus("Could not open that episode. It may have been moved or deleted.", true);
   state.show = rec.show || ""; state.topic = rec.topic || "";
   const now = state.characters;
-  state.characters = (rec.cast || []).map((c) => normalize({ ...(now.find((x) => x.name === c.name) || {}), ...c, id: now.find((x) => x.name === c.name)?.id }));
+  state.characters = (rec.cast || []).map((c) => {
+    const same = (x) => x.name === c.name; // fill gaps from whoever has the name now, your characters, then the templates
+    const old = now.find(same) || state.myTemplates.find(same) || status.characterTemplates.find(same) || {};
+    const kept = Object.fromEntries(Object.entries(c).filter(([, v]) => v !== null && v !== undefined));
+    return normalize({ ...old, ...kept, id: now.find(same)?.id });
+  });
   save(); renderEpisode(); renderCast();
   show.record = rec; show.turns = []; $("transcript").innerHTML = "";
   for (const e of rec.lines || []) {
@@ -577,6 +616,50 @@ function renderCast() {
   renderNow();
   setControls();
 }
+
+// ===== profiles ===================================================================================
+// Click anyone's face or name (under the orb, in the captions, in the thread) to see who they are on the right.
+const LONGEST_LABEL = { 0: "Short turns only", 60: "Up to 1 minute", 120: "Up to 2 minutes", 180: "Up to 3 minutes" };
+function openProfile(name) {
+  const i = state.characters.findIndex((c) => c.name === name), c = state.characters[i];
+  const me = isYou(name);
+  if (!c && !me) return;
+  const color = colorOf(name), said = show.turns.filter((t) => t.name === name);
+  const last = said.at(-1);
+  const section = (title, body) => (body ? `<section><h4>${title}</h4>${body}</section>` : "");
+  const voice = c && (catalog.find((v) => v.name === c.voice)?.name || c.voice || "Default voice");
+  const el = $("profile");
+  el.style.setProperty("--c", color);
+  el.innerHTML = `
+    <div class="ph"><button class="btn ghost icon" id="profileClose" title="Close" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="who">${me ? `<span class="avatar" style="--c:${YOU_COLOR}">${ICON_MIC}</span>` : face(name, color)}
+      <h3>${esc(name)}</h3>
+      <div class="tags">${me ? '<span class="tag">You · in charge</span>'
+        : `<span class="tag">${esc(cap(c.role))}</span><span class="tag">${esc(attitudeLabel(c.attitude))}</span>`}</div>
+    </div>
+    <div class="acts">
+      ${me ? "" : `<button class="btn" id="profileHear">${ICON_PLAY}Hear voice</button>`}
+      <button class="btn" id="profileEdit">Edit</button>
+    </div>
+    ${me ? section("At the table", "<p>You run the show. Type or talk from the studio box: everyone stops, listens and does what you ask.</p>")
+      : section("About", `<p>${esc(c.persona || "No background yet.")}</p>`) + section("How they speak", c.style ? `<p>${esc(c.style)}</p>` : "")
+        + section("Voice", `<dl><dt>Voice</dt><dd>${esc(voice)}</dd><dt>Speed</dt><dd>${esc(speedLabel(c.speed))}</dd>
+            <dt>Expression</dt><dd>${esc(EXPRS.find((x) => x[0] === c.expr)?.[1] || "Natural")}</dd><dt>Long turns</dt><dd>${esc(LONGEST_LABEL[c.longest] || "Short turns only")}</dd></dl>`)}
+    ${section("This episode", `<p>${said.length ? `${said.length} line${said.length === 1 ? "" : "s"} so far.` : "Has not spoken yet."}</p>`)}
+    ${last ? section("Last said", `<p>${esc(last.cutText ?? last.text)}</p>`) : ""}`;
+  el.hidden = false; document.body.classList.add("profile-open");
+  $("profileClose").onclick = closeProfile;
+  $("profileEdit").onclick = () => { closeProfile(); me ? openYouEditor() : openEditor(i); };
+  if (!me) $("profileHear").onclick = (e) => previewVoice(c, e.currentTarget);
+  if (!me) $("profileHear").disabled = show.running;
+}
+function closeProfile() { $("profile").hidden = true; document.body.classList.remove("profile-open"); }
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-profile]");
+  if (t && !t.closest(".profile")) openProfile(t.dataset.profile);
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("profile").hidden && $("editor").hidden) closeProfile(); });
 
 // ===== character editor ==========================================================================
 function openEditor(i) {
@@ -894,6 +977,8 @@ function setControls() {
   // Only what you can use right now is on screen: Start before a show, Pause and Stop during it, downloads after it.
   $("startBtn").hidden = r;
   $("pauseBtn").hidden = $("stopBtn").hidden = $("micBtn").hidden = $("live").hidden = $("steer").hidden = !r;
+  $("restartBtn").hidden = !show.turns.length; // start over: there is something to start over from
+  $("restartBtn").disabled = !ok;
   $("foot").hidden = !r && view === "orb"; // the orb's caption shows the status between shows
   $("noteInput").disabled = $("noteBtn").disabled = !r;
   $("micBtn").disabled = !r || !sttReady || mic.busy;
@@ -1643,6 +1728,12 @@ function saveRecord(now) {
 }
 
 $("startBtn").onclick = start;
+// Start over: the same topic and guests from the top, as a new episode. The old one stays in the sidebar.
+$("restartBtn").onclick = () => {
+  if (show.running) stopShow();
+  show.turns = []; show.record = null; $("transcript").innerHTML = "";
+  start();
+};
 $("pauseBtn").onclick = togglePause;
 $("stopBtn").onclick = stopShow;
 $("noteBtn").onclick = submitBox;
@@ -1661,8 +1752,8 @@ function bubble(name, html, cls) {
   const el = document.createElement("div");
   el.className = "turn " + (cls || "");
   el.style.setProperty("--c", colorOf(name));
-  el.innerHTML = `${face(name, colorOf(name))}
-    <div class="bubble"><div class="who">${esc(name)}<span class="tagx">${c ? cap(c.role) + " · " + esc(attitudeLabel(c.attitude)) : isYou(name) ? "You" : ""}</span></div><div class="txt">${html}</div><div class="prog"></div></div>`;
+  el.innerHTML = `${face(name, colorOf(name), `data-profile="${esc(name)}"`)}
+    <div class="bubble"><div class="who"><span data-profile="${esc(name)}">${esc(name)}</span><span class="tagx">${c ? cap(c.role) + " · " + esc(attitudeLabel(c.attitude)) : isYou(name) ? "You" : ""}</span></div><div class="txt">${html}</div><div class="prog"></div></div>`;
   return el;
 }
 function showThinking(speaker) {
@@ -1693,7 +1784,7 @@ function renderView() {
 function renderSeats() {
   const people = [...cast().map((c) => ({ name: c.name, color: colorOf(c.name), html: esc(c.name[0].toUpperCase()) })),
     { name: you().name, color: YOU_COLOR, html: ICON_MIC }];
-  $("seats").innerHTML = people.map((p) => `<span class="avatar" data-name="${esc(p.name)}" style="--c:${p.color}" title="${esc(p.name)}">${p.html}</span>`).join("");
+  $("seats").innerHTML = people.map((p) => `<span class="avatar" data-name="${esc(p.name)}" data-profile="${esc(p.name)}" style="--c:${p.color}" title="${esc(p.name)}">${p.html}</span>`).join("");
 }
 
 const stageState = { key: null, words: [] };
@@ -1711,7 +1802,7 @@ function updateStage(now) {
     color = colorOf(speaking.name);
     if (key !== stageState.key) {
       const c = cast().find((x) => x.name === speaking.name);
-      $("capWho").innerHTML = `${esc(speaking.name)}${c ? ` · ${cap(c.role)}` : speaking.human ? " · You" : ""}`;
+      $("capWho").innerHTML = `<span data-profile="${esc(speaking.name)}">${esc(speaking.name)}</span>${c ? ` · ${cap(c.role)}` : speaking.human ? " · You" : ""}`;
       $("capWho").style.setProperty("--c", color);
       $("capLine").className = "cap-line";
       // Split the line into subtitle-sized chunks of about 55 characters.
@@ -1740,7 +1831,7 @@ function updateStage(now) {
   } else if (thinking) {
     key = "t:" + thinking; color = colorOf(thinking);
     if (key !== stageState.key) {
-      $("capWho").innerHTML = `${esc(thinking)} <span class="think">is thinking…</span>`;
+      $("capWho").innerHTML = `<span data-profile="${esc(thinking)}">${esc(thinking)}</span> <span class="think">is thinking…</span>`;
       $("capWho").style.setProperty("--c", color);
       $("capLine").className = "cap-line"; $("capLine").innerHTML = ""; stageState.words = [];
     }
