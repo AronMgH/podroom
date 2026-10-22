@@ -7,9 +7,11 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3CradialGradient%20id='bg'%20cx='30%25'%20cy='20%25'%20r='120%25'%3E%3Cstop%20offset='0'%20stop-color='%23e6f57a'/%3E%3Cstop%20offset='.45'%20stop-color='%23cde34a'/%3E%3Cstop%20offset='1'%20stop-color='%236f8a12'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect%20width='64'%20height='64'%20rx='16'%20fill='url%28%23bg%29'/%3E%3Cpath%20d='M12%2054V30a20%2020%200%200%201%2040%200v24'%20fill='none'%20stroke='%2311140a'%20stroke-width='3.5'%20stroke-linecap='round'%20opacity='.28'/%3E%3Crect%20x='25'%20y='14'%20width='14'%20height='24'%20rx='7'%20fill='%2311140a'/%3E%3Cpath%20d='M29%2021h6M29%2026h6M29%2031h6'%20stroke='%23cde34a'%20stroke-width='2.2'%20stroke-linecap='round'%20opacity='.7'/%3E%3Cpath%20d='M19%2031a13%2013%200%200%200%2026%200'%20fill='none'%20stroke='%2311140a'%20stroke-width='4'%20stroke-linecap='round'/%3E%3Cpath%20d='M32%2044v7M25%2052h14'%20stroke='%2311140a'%20stroke-width='4'%20stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/theme.css">
 <style>
-  body { padding: 22px 22px 30px; }
   .wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
-  .grid { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .grid { display: grid; grid-template-columns: minmax(0, 350px) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .grid.setup-closed { grid-template-columns: minmax(0, 1fr); }
+  .grid.setup-closed .side { display: none; }
+  #setupBtn[aria-expanded="true"] { background: var(--glass-3); border-color: var(--edge-2); }
   .help { font-size: 12px; color: var(--faint); font-weight: 400; letter-spacing: normal; text-transform: none; }
   .keyok { color: var(--ok); font-weight: 600; }
   .row { display: flex; gap: 12px; align-items: end; }
@@ -129,7 +131,7 @@
   .viz { height: 64px; margin: 0 16px; border-radius: 18px; background: rgba(0, 0, 0, .28); border: 1px solid var(--edge); flex: none; }
 
   /* orb view */
-  .stage { height: calc(100vh - 330px); min-height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 4px 24px 16px; overflow: hidden; }
+  .stage { height: calc(100vh - 350px); min-height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 4px 24px 16px; overflow: hidden; }
   .stage canvas { width: min(230px, 30vh); height: min(230px, 30vh); flex: none; }
   .cap { text-align: center; width: 100%; max-width: 680px; }
   .cap-who { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--c, var(--faint)); margin-bottom: 8px; min-height: 18px; }
@@ -146,7 +148,7 @@
   .seats .avatar svg { width: 15px; height: 15px; }
   .seats .avatar.next { opacity: .75; }
   .seats .avatar.on { opacity: 1; transform: scale(1.18); box-shadow: 0 0 20px var(--c); }
-  .transcript { min-height: 260px; height: calc(100vh - 390px); overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
+  .transcript { min-height: 260px; height: calc(100vh - 410px); overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
   .empty { margin: auto; text-align: center; color: var(--muted); max-width: 380px; }
   .empty .orb {
     width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 16px;
@@ -203,9 +205,6 @@
     .stage { height: auto; min-height: 0; padding: 18px 16px; }
   }
   @media (max-width: 560px) {
-    body { padding: 14px 16px 24px; }
-    header.top nav.tabs { margin-left: 0; width: 100%; }
-    nav.tabs a { flex: 1; text-align: center; }
     .bar .meta { margin-left: 0; width: 100%; }
     .grid2, .formats { grid-template-columns: 1fr; }
     .dialog .dh { flex-wrap: wrap; }
@@ -213,25 +212,12 @@
 </style>
 </head>
 <body>
+<header class="page-head"><h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Studio</h1><span class="sub" id="headSub"></span><span class="sp"></span>
+  <button class="btn" id="setupBtn" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Episode setup</button></header>
+<script src="/shell.js"></script>
 <div class="wrap">
-  <header class="top">
-    <a class="brand" href="/" title="Back to the Studio">
-      <div class="logo">
-      <svg width="28" height="28" viewBox="6 6 52 52" aria-hidden="true" style="color:var(--accent-ink)">
-        <path d="M12 54V30a20 20 0 0 1 40 0v24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" opacity=".28"/>
-        <rect x="25" y="14" width="14" height="24" rx="7" fill="currentColor"/>
-        <path d="M19 31a13 13 0 0 0 26 0M32 44v7M25 52h14" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
-      </svg>
-      </div>
-      <div>
-        <h1>Podroom</h1>
-        <p>Your AI podcast studio · voices run on this computer</p>
-      </div>
-    </a>
-    <nav class="tabs" aria-label="Pages"><a href="/" class="on" aria-current="page">Studio</a><a href="/casts">Casts</a><a href="/settings">Settings</a></nav>
-  </header>
 
-  <div class="grid">
+  <div class="grid setup-closed" id="grid">
     <!-- side panel -->
     <aside class="card side">
       <div class="pane">
@@ -404,6 +390,10 @@ async function init() {
   ttsModels = models.filter((m) => m.languages.includes("en"));
   if (!ttsModels.some((m) => m.id === state.settings.ttsModel)) state.settings.ttsModel = ttsModels[0]?.id || "";
   renderEpisode(); renderFormats(); renderCast(); renderKey(); renderNow(); renderBoxHint(); renderView();
+  const q = new URLSearchParams(location.search);
+  if (q.get("episode")) await openEpisode(q.get("episode"));
+  else if (q.has("new")) { history.replaceState(null, "", "/"); newEpisode(); }
+  else renderHead();
 }
 
 // ===== small widgets ===========================================================================
@@ -417,6 +407,53 @@ function seg(el, options, value, onPick) {
   }
 }
 function rangeFill(el) { el.style.setProperty("--p", `${((el.value - el.min) / (el.max - el.min)) * 100}%`); }
+
+// ===== episode setup & episodes ==================================================================
+// The setup (show, topic, length, guests) stays out of the way: it opens for a new episode, or from the
+// title bar, and closes when the show starts.
+function setSetup(open) {
+  $("grid").classList.toggle("setup-closed", !open);
+  $("setupBtn").setAttribute("aria-expanded", String(open));
+}
+$("setupBtn").onclick = () => setSetup($("grid").classList.contains("setup-closed"));
+
+// A new episode: same guests, a blank topic and an empty transcript.
+function newEpisode() {
+  show.turns = []; show.record = null; $("transcript").innerHTML = "";
+  state.topic = ""; save(); renderEpisode();
+  window.podroomShell?.setActive("");
+  setSetup(true); $("topic").focus();
+  setStatus("New episode: write a topic, check the guests, then press Start.");
+  setControls(); renderHead();
+}
+
+// An episode from the sidebar: its show, topic and guests come back into the Studio and its lines fill the
+// transcript, so Resume carries on with the same people from where it stopped.
+async function openEpisode(id) {
+  const rec = await fetch(`/api/podcast/episode?id=${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (!rec) return setStatus("Could not open that episode. It may have been moved or deleted.", true);
+  state.show = rec.show || ""; state.topic = rec.topic || "";
+  const now = state.characters;
+  state.characters = (rec.cast || []).map((c) => normalize({ ...(now.find((x) => x.name === c.name) || {}), ...c, id: now.find((x) => x.name === c.name)?.id }));
+  save(); renderEpisode(); renderCast();
+  show.record = rec; show.turns = []; $("transcript").innerHTML = "";
+  for (const e of rec.lines || []) {
+    if (!["line", "you", "onair"].includes(e.type) || e.dropped) continue;
+    const human = e.type !== "line";
+    const turn = { name: e.name, who: human ? { ...you(), name: e.name } : { ...(state.characters.find((c) => c.name === e.name) || { name: e.name }) },
+      text: e.cut || e.text, llmText: e.cut || undefined, cutText: e.cut || undefined, human, phase: e.phase, restored: true, entry: e,
+      pcm: [], sources: [], reactions: [], gain: null, start: 0, end: 0, done: true, abort: new AbortController(), el: null, cutsPrev: null };
+    show.turns.push(turn);
+    renderTurn(turn); turn.el.classList.remove("queued");
+  }
+  window.podroomShell?.setActive(id);
+  setControls(); renderNow(); renderHead();
+  const lines = show.turns.length;
+  setStatus(`${lines} line${lines === 1 ? "" : "s"} so far. Press Resume to carry on for up to ${state.settings.minutes || 10} more minutes; the guests remember everything said.`);
+}
+function renderHead() {
+  $("headSub").textContent = show.record ? `${state.show || "Untitled show"} · ${state.topic || "No topic"}` : "New episode";
+}
 
 // ===== studio header ===========================================================================
 function renderNow() {
@@ -819,6 +856,7 @@ async function sampleLine(c, btn, out) {
 const sampleSession = crypto.randomUUID();
 const show = { session: null, running: false, paused: false, epoch: 0, turns: [], nextTime: 0, thinkingEl: null, usage: { in: 0, out: 0 },
   calls: [], lastCut: -99, ttsBusy: false, clips: {}, wps: {}, floor: null, floorEnd: -99 };
+window.podroomBusy = () => show.running; // the sidebar asks before you leave a playing episode
 // Calls-per-minute budget: at most rpm AI calls in any 60 seconds.
 function canCall() {
   const now = performance.now();
@@ -833,7 +871,7 @@ function setStatus(msg, err) { $("status").textContent = msg || ""; $("status").
 function setControls() {
   if (!status) return;
   const r = show.running, ok = keyOk();
-  $("startBtn").innerHTML = ICON_PLAY + (show.turns.length && !r ? "New episode" : "Start");
+  $("startBtn").innerHTML = ICON_PLAY + (show.turns.length && show.record && !r ? "Resume" : "Start");
   $("startBtn").disabled = r || !ok;
   $("pauseBtn").innerHTML = show.paused ? ICON_PLAY + "Resume" : ICON_PAUSE + "Pause";
   // Only what you can use right now is on screen: Start before a show, Pause and Stop during it, downloads after it.
@@ -865,12 +903,27 @@ async function start() {
   if (err) return setStatus(err, true);
   for (const c of state.characters) c.name = c.name.trim();
   previewing?.abort();
-  // Clear the last episode before any await, so a second click cannot start a second show.
-  show.turns = []; show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
-  $("transcript").innerHTML = ""; $("clock").textContent = "0:00"; show.signedOff = false;
+  // An episode with lines already (opened from the sidebar, or one that just ended) is picked up where it
+  // stopped; otherwise this is a new one. Either way, set up before any await, so a second click cannot start a second show.
+  const resume = show.turns.length > 0 && !!show.record;
+  if (resume) {
+    // What was said before stays in the conversation but counts as heard: the clock and the episode length
+    // start again from here, so Length is how much longer this session plays.
+    for (const t of show.turns) t.restored = true;
+    const lastAI = [...show.turns].reverse().find((t) => !t.human);
+    const lastAt = Date.parse((show.record.lines.at(-1)?.at || "").replace(" ", "T"));
+    show.reopen = lastAI?.phase === "close" || !(Date.now() - lastAt < 20 * 60e3); // signed off, or a while ago: the host reopens
+    show.record.resumedAt = stamp(); delete show.record.endedAt; delete show.record.ended;
+  } else {
+    show.turns = []; $("transcript").innerHTML = ""; show.reopen = false;
+  }
+  show.base = show.turns.length; show.baseTokens = resume ? show.record.tokens || 0 : 0;
+  show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
+  $("clock").textContent = "0:00"; show.signedOff = false;
   show.running = true; show.epoch++;
-  show.session = crypto.randomUUID(); // one conversation ID per episode, for providers that route by session
-  newRecord();
+  show.session = crypto.randomUUID(); // one conversation ID per session, for providers that route by session
+  if (resume) saveRecord(true); else newRecord();
+  setSetup(false); // the stage gets the whole width while the show plays
   const ep = show.epoch;
   setControls();
   try { await audio(); } catch (e) { return endShow(`Could not start audio: ${e.message}`, true); }
@@ -949,7 +1002,7 @@ function pickNext(phase, mode = state.settings.turnMode) {
   const people = cast();
   const host = people.find((c) => c.role === "host") || people[0];
   const n = show.turns.length, k = aiCount();
-  if (k === 0 || phase === "close") return host; // the host opens and closes the episode
+  if (k === 0 || phase === "close" || phase === "reopen") return host; // the host opens, reopens and closes the episode
   const last = show.turns[n - 1];
   const others = people.filter((c) => c.name !== last.name);
   if (mode === "roundrobin") {
@@ -979,7 +1032,7 @@ function pickNext(phase, mode = state.settings.turnMode) {
 // or you speak.
 const FLOOR_MAX = 360;
 const wpsOf = (name) => show.wps[name] || 2.4;
-const plannedSecs = () => { const first = show.turns.find((t) => t.start !== null); return first ? show.nextTime - first.start : 0; };
+const plannedSecs = () => { const first = show.turns.find((t) => t.start !== null && !t.restored); return first ? show.nextTime - first.start : 0; };
 const timeLeft = () => (state.settings.minutes || 10) * 60 - 20 - plannedSecs();
 
 // "Benny, take the stage for 4 minutes": one name plus a length (typos such as "5 minute" and "4 minuts" included).
@@ -1031,7 +1084,7 @@ async function chooseNext(phase, ep) {
     if (f && grantFloor(f.who, f.secs, "you")) return { speaker: f.who, floor: floorPlan() };
   }
   if (state.settings.turnMode !== "smart") return { speaker: pickNext(phase) };
-  if (aiCount() === 0 || phase === "close") return { speaker: host };
+  if (aiCount() === 0 || phase === "close" || phase === "reopen") return { speaker: host };
   const others = people.filter((c) => c.name !== last.name);
   if (others.length === 1) return { speaker: others[0] };
   const named = (text) => others.filter((c) => mentions(text, [c]));
@@ -1079,6 +1132,7 @@ async function chooseNext(phase, ep) {
 // (less a line's worth), the host is told to wrap up. Nobody else knows when that will be.
 function episodePhase() {
   if (aiCount() === 0) return "open";
+  if (show.reopen && !show.turns.slice(show.base).some((t) => !t.human)) return "reopen"; // back after a break
   return plannedSecs() >= (state.settings.minutes || 10) * 60 - 20 ? "close" : "normal";
 }
 
@@ -1161,7 +1215,7 @@ async function askAI(body, ep) {
 // can't wait; otherwise more often for fiery attitudes.
 function planInterruption(prev, speaker, wantsCut) {
   const level = state.settings.interrupts ?? 1;
-  if (!level || !prev || prev.human || prev.floor || prev.phase === "open" || prev.cutAt || prev.cutsPrev) return null;
+  if (!level || !prev || prev.human || prev.restored || prev.floor || prev.phase === "open" || prev.cutAt || prev.cutsPrev) return null;
   if (show.turns.length - show.lastCut < (level === 2 ? 4 : 7)) return null;
   const words = prev.text.split(/\s+/);
   if (words.length < 12) return null;
@@ -1456,7 +1510,7 @@ function stopShow() {
     // Keep only what was actually heard.
     if (t.start === null || t.start > ctx.currentTime) { t.pcm = []; t.el?.remove(); if (t.entry) t.entry.dropped = true; }
   }
-  show.turns = show.turns.filter((t) => t.pcm.length || t.human);
+  show.turns = show.turns.filter((t) => t.pcm.length || t.human || t.restored);
   endShow("Stopped.");
 }
 
@@ -1471,7 +1525,7 @@ function endShow(msg, err) {
   setControls();
   if (show.record && !show.record.endedAt) {
     show.record.endedAt = stamp(); show.record.ended = msg;
-    show.record.tokens = show.usage.in + show.usage.out || undefined;
+    show.record.tokens = (show.baseTokens || 0) + show.usage.in + show.usage.out || undefined; // all sessions together
     saveRecord(true);
   }
 }
@@ -1488,7 +1542,7 @@ function newRecord() {
   const slug = (state.show || "episode").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
   show.record = {
     id: `${started.replace(/[ :]/g, (c) => (c === " " ? "_" : "-"))}_${slug}`, show: state.show, topic: state.topic, startedAt: started,
-    cast: cast().map(({ name, role, voice, attitude, persona, style, speed, expr, length }) => ({ name, role, voice, attitude, persona, style, speed, expr, length })),
+    cast: cast().map(({ name, role, voice, attitude, persona, style, speed, expr, length, longest }) => ({ name, role, voice, attitude, persona, style, speed, expr, length, longest })),
     you: you().name,
     settings: { minutes: s.minutes, turnMode: s.turnMode, length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel,
       interrupts: s.interrupts, reactions: s.reactions, ttsModel: s.ttsModel },
@@ -1503,14 +1557,15 @@ function logEntry(e) {
   saveRecord();
   return entry;
 }
-let recordTimer = null, saving = Promise.resolve();
+let recordTimer = null, saving = Promise.resolve(), listedId = null;
 function saveRecord(now) {
   clearTimeout(recordTimer);
   const rec = show.record;
   recordTimer = setTimeout(() => {
     // One save at a time, always the latest copy, so an older one never lands last.
     saving = saving.then(() => post("/api/podcast/episode", rec)).then(async (r) => {
-      if (!r.ok) setStatus(`Could not save the episode: ${(await r.json()).error}`, true);
+      if (!r.ok) return setStatus(`Could not save the episode: ${(await r.json()).error}`, true);
+      if (rec.lines.length && listedId !== rec.id) { listedId = rec.id; window.podroomShell?.setActive(rec.id); }
     }).catch(() => setStatus("Could not save the episode (is the server running?)", true));
   }, now ? 0 : 300);
 }
@@ -1521,7 +1576,6 @@ $("stopBtn").onclick = stopShow;
 $("noteBtn").onclick = submitBox;
 $("micBtn").innerHTML = ICON_MIC;
 $("micBtn").onclick = toggleMic;
-// The mic needs the Moonshine model on this computer. Settings can download it; this keeps the page in step.
 // The speech model is downloaded from the Settings page; here it only decides whether the mic can be used.
 function renderStt(d) { sttReady = !!d.ready; setControls(); }
 fetch("/api/stt").then((r) => r.json()).then(renderStt).catch(() => {});
@@ -1722,7 +1776,7 @@ function tick() {
       const p = t.el.querySelector(".prog");
       if (p) p.style.width = started && t.end > t.start ? `${Math.min(100, ((now - t.start) / (t.end - t.start)) * 100)}%` : "0";
     });
-    const first = show.turns[0].start;
+    const first = show.turns.find((t) => !t.restored)?.start ?? null;
     if (first !== null && show.running) {
       const sec = Math.max(0, Math.floor(now - first));
       $("clock").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
@@ -1746,7 +1800,7 @@ function download(blob, name) {
 // Mixes the episode exactly as it was heard: overlaps, cut-offs and reactions included.
 $("dlWav").onclick = () => {
   const rate = 24000;
-  const parts = show.turns.filter((t) => t.pcm.length && t.start !== null);
+  const parts = show.turns.filter((t) => t.pcm.length && t.start !== null && !t.restored); // this session's audio
   if (!parts.length) return;
   const t0 = parts[0].start;
   const ends = parts.flatMap((t) => [t.end, ...t.reactions.map((r) => r.when + r.pcm.length / rate)]);
@@ -1774,7 +1828,7 @@ $("dlWav").onclick = () => {
   download(new Blob([buf], { type: "audio/wav" }), episodeName("wav"));
 };
 $("dlTxt").onclick = () => {
-  const lines = [`${state.show}`, `Topic: ${state.topic}`, "", ...show.turns.filter((t) => t.pcm.length || t.human).map((t) => `${t.name}: ${t.cutText ?? t.text}\n`)];
+  const lines = [`${state.show}`, `Topic: ${state.topic}`, "", ...show.turns.filter((t) => t.pcm.length || t.human || t.restored).map((t) => `${t.name}: ${t.cutText ?? t.text}\n`)];
   download(new Blob([lines.join("\n")], { type: "text/plain" }), episodeName("txt"));
 };
 

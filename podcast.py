@@ -250,7 +250,7 @@ def episode_text(rec):
             tags.append(f"cuts in on {e['cutIn']}")
         if e.get("cut"):
             tags.append("cut off here")
-        if e.get("phase") in ("open", "close"):
+        if e.get("phase") in ("open", "reopen", "close"):
             tags.append(e["phase"])
         if e.get("toYou"):
             tags.append("hands over to you")
@@ -266,14 +266,50 @@ def episode_text(rec):
 
 
 def save_episode(rec):
-    name = re.sub(r"[^A-Za-z0-9_-]+", "-", str(rec.get("id", "")))[:80].strip("-")
-    if not name:
-        raise ValueError("episode needs an id")
+    path = _episode_file(rec.get("id"))
     os.makedirs(EPISODE_DIR, exist_ok=True)
-    base = os.path.join(EPISODE_DIR, name)
+    base, name = path[:-5], os.path.basename(path)[:-5]
     _write(base + ".json", json.dumps(rec, indent=2, ensure_ascii=False))
     _write(base + ".txt", episode_text(rec))
     return name
+
+
+def _episode_file(eid):
+    """The JSON file of an episode id. Only letters, digits, - and _ survive, so an id can never reach outside EPISODE_DIR."""
+    name = re.sub(r"[^A-Za-z0-9_-]+", "-", str(eid or ""))[:80].strip("-")
+    if not name:
+        raise ValueError("episode needs an id")
+    return os.path.join(EPISODE_DIR, name + ".json")
+
+
+SPOKEN = ("line", "you", "onair")
+
+
+def list_episodes():
+    """Every saved episode that has at least one line, most recently active first."""
+    out = []
+    for f in os.listdir(EPISODE_DIR) if os.path.isdir(EPISODE_DIR) else []:
+        if not f.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(EPISODE_DIR, f)) as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        lines = [e for e in rec.get("lines") or [] if isinstance(e, dict) and e.get("type") in SPOKEN and not e.get("dropped")]
+        if not lines:
+            continue
+        out.append({"id": f[:-5], "show": rec.get("show") or "Untitled show", "topic": rec.get("topic") or "",
+                    "startedAt": rec.get("startedAt", ""), "updatedAt": lines[-1].get("at") or rec.get("startedAt", ""),
+                    "lines": len(lines), "cast": [c.get("name", "") for c in rec.get("cast") or [] if isinstance(c, dict)],
+                    "ended": bool(rec.get("endedAt"))})
+    out.sort(key=lambda e: e["updatedAt"], reverse=True)
+    return out
+
+
+def load_episode(eid):
+    with open(_episode_file(eid)) as f:
+        return json.load(f)
 
 
 def past_characters():
@@ -482,6 +518,9 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
     if phase == "open":
         guests = ", ".join(c["name"] for c in others) or "the listeners"
         lines.append(f"- The episode is starting now. In a few quick sentences, welcome the listeners, introduce the topic and {guests} by name, then hand over with a question.")
+    elif phase == "reopen":
+        lines.append("- The episode is back after a break. In two or three sentences, welcome the listeners back, recap in a few words "
+                     "where the conversation had got to, then carry it forward with a question to a guest by name.")
     elif phase == "sample":
         lines.append("- This is an audition before the show. Introduce yourself in character and give your opening take on the topic.")
     elif phase == "close":
@@ -668,7 +707,7 @@ def generate_turn(req):
     floor = req.get("floor") if isinstance(req.get("floor"), dict) and req["floor"].get("mode") in ("start", "continue", "last") else None
     spec = LENGTHS[length]
     # Smart turn-taking: the speaker also names who goes next, so a line needs one AI call, not two.
-    pick_next = bool(req.get("pickNext")) and phase in ("open", "normal") and (not floor or floor["mode"] == "last")
+    pick_next = bool(req.get("pickNext")) and phase in ("open", "reopen", "normal") and (not floor or floor["mode"] == "last")
     if floor:  # a long turn is written in parts of 30 to 170 words, with a token and sentence budget to match
         words = max(30, min(170, int(floor.get("words") or 120)))
         spec = (f"about {words} words of natural, continuous speech", int(words * 1.8) + 60, max(3, round(words / 11)))
@@ -694,7 +733,7 @@ def generate_turn(req):
     raw, nxt = take_next(raw, me, cast, user)
     # The opening and the sign-off get one extra sentence for the welcome or the thank-yous.
     everyone = cast + ([{"name": user}] if user else [])
-    text = limit_sentences(clean(raw, me, everyone), spec[2] + (1 if phase in ("open", "close") else 0))
+    text = limit_sentences(clean(raw, me, everyone), spec[2] + (1 if phase in ("open", "reopen", "close") else 0))
     # Handing over to you: the line ends by asking you by name, or the model tags it (clean() strips the tag). The tag
     # only counts when the line talks to you (names you, or answers you), since models also tag questions meant for another guest.
     talks_to_you = bool(user) and (re.search(rf"\b{re.escape(user)}\b", text, re.I) is not None
@@ -979,6 +1018,8 @@ def fake_line(me, cast, transcript, phase):
         return f"Hi, I'm {me['name']}. You'll hear plenty from me on this one."
     if phase == "open":
         return f"Welcome to the show, everyone. I'm {me['name']}, and today I'm here with {', '.join(others)}. {random.choice(others)}, what's your first take?"
+    if phase == "reopen":
+        return f"Welcome back, everyone. We were in the middle of it. {random.choice(others)}, pick it up from there?"
     if phase == "close":
         return f"That's all we have time for. Thank you, {', '.join(others)}. See you next week."
     line = random.choice([

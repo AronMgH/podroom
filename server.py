@@ -13,6 +13,7 @@ import os
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -264,10 +265,11 @@ class Handler(BaseHTTPRequestHandler):
         return text, data.get("model", ""), data.get("lang", "en"), kwargs, speed
 
     def do_GET(self):
-        if self.path in ("/", "/podcast"):
+        page, _, query = self.path.partition("?")
+        if page in ("/", "/podcast"):
             with open(os.path.join(HERE, "podcast.html"), "rb") as f:
                 self.send_body(200, f.read(), "text/html; charset=utf-8")
-        elif self.path == "/casts":
+        elif page == "/casts":
             with open(os.path.join(HERE, "casts.html"), "rb") as f:
                 self.send_body(200, f.read(), "text/html; charset=utf-8")
         elif self.path.startswith("/api/podcast/models?provider="):
@@ -275,9 +277,20 @@ class Handler(BaseHTTPRequestHandler):
             if pid not in podcast.PROVIDERS:
                 return self.send_json(400, {"error": "unknown provider"})
             self.send_json(200, podcast.list_models(pid))
+        elif page == "/api/podcast/episodes":
+            self.send_json(200, podcast.list_episodes())
+        elif page == "/api/podcast/episode":
+            eid = urllib.parse.parse_qs(query).get("id", [""])[0]
+            try:
+                self.send_json(200, podcast.load_episode(eid))
+            except (OSError, ValueError):
+                self.send_json(404, {"error": "no such episode"})
+        elif page == "/shell.js":
+            with open(os.path.join(HERE, "shell.js"), "rb") as f:
+                self.send_body(200, f.read(), "text/javascript; charset=utf-8")
         elif self.path == "/api/podcast/people":
             self.send_json(200, podcast.past_characters())
-        elif self.path == "/settings":
+        elif page == "/settings":
             with open(os.path.join(HERE, "settings.html"), "rb") as f:
                 self.send_body(200, f.read(), "text/html; charset=utf-8")
         elif self.path == "/api/voices":

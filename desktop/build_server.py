@@ -8,7 +8,7 @@ import os
 import PyInstaller.__main__
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PAGES = ["podcast.html", "casts.html", "settings.html", "theme.css", "icon.svg"]
+PAGES = ["podcast.html", "casts.html", "settings.html", "shell.js", "theme.css", "icon.svg"]
 
 args = [
     os.path.join(ROOT, "server.py"),

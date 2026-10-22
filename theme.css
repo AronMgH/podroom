@@ -1,7 +1,10 @@
-/* Podroom: shared glass theme for the Speak and Podcast pages. Dark by design. */
+/* Podroom: the shared theme and sidebar shell for the Studio, Casts and Settings pages. Flat black, dark by design. */
 :root {
   color-scheme: dark;
-  --bg: #050506;
+  --bg: #000;
+  --panel: #121214;
+  --panel-2: #19191c;
+  --nav-w: 264px;
   --text: #f3f3ef;
   --muted: rgba(243, 243, 239, .56);
   --faint: rgba(243, 243, 239, .34);
@@ -19,8 +22,8 @@
   --danger: #ff6b6b;
   --ok: #a3e05f;
   --warn: #f5b84a;
-  --radius: 28px;
-  --shadow: 0 30px 80px -20px rgba(0, 0, 0, .6), 0 2px 8px rgba(0, 0, 0, .25);
+  --radius: 22px;
+  --shadow: none;
   --hi: inset 0 1px 0 rgba(255, 255, 255, .08);
 }
 
@@ -37,60 +40,76 @@ body {
   overflow-x: hidden;
 }
 
-/* Ambient light behind the glass: three soft glows drifting slowly, plus a whisper of grain. */
-body::before {
-  content: ""; position: fixed; inset: -20%; z-index: -2; pointer-events: none;
-  background:
-    radial-gradient(38% 34% at 18% 88%, rgba(170, 200, 40, .26), transparent 70%),
-    radial-gradient(34% 30% at 30% 12%, rgba(150, 140, 128, .20), transparent 70%),
-    radial-gradient(40% 36% at 88% 40%, rgba(72, 92, 168, .22), transparent 70%),
-    radial-gradient(30% 26% at 70% 100%, rgba(232, 128, 70, .12), transparent 70%);
-  filter: blur(20px);
-  animation: drift 38s ease-in-out infinite alternate;
+/* ---- the shell: a sidebar with the three places and your episodes, then the page ---------------------- */
+body.shell { padding: 0 24px 28px calc(var(--nav-w) + 24px); }
+.side-nav {
+  position: fixed; inset: 0 auto 0 0; width: var(--nav-w); z-index: 40; display: flex; flex-direction: column;
+  background: #0c0c0e; border-right: 1px solid var(--edge);
 }
-body::after {
-  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .05; mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-@keyframes drift {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(3%, -2%, 0) scale(1.05); }
-  100% { transform: translate3d(-3%, 2%, 0) scale(1.02); }
-}
-@media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
-
-/* ---- header & nav ---------------------------------------------------------------- */
-header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-a.brand { display: flex; align-items: center; gap: 14px; color: inherit; text-decoration: none; }
+.side-nav .brand { display: flex; align-items: center; gap: 12px; height: 72px; padding: 0 20px; flex: none;
+  color: var(--text); text-decoration: none; border-bottom: 1px solid var(--edge); font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
 .logo {
-  width: 40px; height: 40px; border-radius: 14px; flex: none; display: grid; place-items: center;
+  width: 36px; height: 36px; border-radius: 11px; flex: none; display: grid; place-items: center;
   background: radial-gradient(120% 120% at 30% 20%, #e6f57a, var(--accent) 45%, #6f8a12);
-  box-shadow: 0 0 28px var(--accent-glow), var(--hi);
 }
 .logo svg { fill: var(--accent-ink); }
-header.top h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -.02em; }
-header.top p { margin: 0; color: var(--muted); font-size: 13px; }
-nav.tabs {
-  margin-left: auto; display: flex; gap: 2px; padding: 4px; border-radius: 999px;
-  background: var(--glass); border: 1px solid var(--edge); box-shadow: var(--hi);
-  backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+.nav-sec { padding: 18px 14px 14px; border-bottom: 1px solid var(--edge); flex: none; }
+.nav-label { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 10px;
+  font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+.nav-add { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); text-decoration: none; }
+.nav-add:hover { color: var(--text); background: var(--glass-2); }
+.nav-add svg, .nav-item svg, .ep-item svg { width: 17px; height: 17px; }
+.nav-item {
+  position: relative; display: flex; align-items: center; gap: 12px; padding: 7px 10px; margin-bottom: 4px; border-radius: 14px;
+  color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14px; border: 1px solid transparent;
 }
-nav.tabs a {
-  color: var(--muted); text-decoration: none; font-weight: 500; font-size: 13px;
-  padding: 7px 16px; border-radius: 999px; transition: color .15s, background .15s;
+.nav-item .ic { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .05); flex: none; }
+.nav-item:hover { color: var(--text); background: rgba(255, 255, 255, .035); }
+.nav-item.on { color: var(--text); background: linear-gradient(90deg, rgba(205, 227, 74, .13), rgba(255, 255, 255, .04) 45%); border-color: var(--edge); }
+.nav-item.on::before { content: ""; position: absolute; left: -15px; top: 9px; bottom: 9px; width: 4px; border-radius: 0 4px 4px 0;
+  background: var(--accent); box-shadow: 0 0 14px var(--accent-glow); }
+.nav-sec.eps { flex: 1; min-height: 0; display: flex; flex-direction: column; border-bottom: 0; padding-bottom: 0; }
+.ep-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px 14px; }
+.ep-item { display: flex; gap: 11px; align-items: flex-start; padding: 9px 10px; border-radius: 12px; color: var(--muted); text-decoration: none; }
+.ep-item:hover { color: var(--text); background: rgba(255, 255, 255, .035); }
+.ep-item.on { color: var(--text); background: rgba(255, 255, 255, .06); }
+.ep-item svg { margin-top: 2px; flex: none; opacity: .8; }
+.ep-item .t { min-width: 0; display: flex; flex-direction: column; }
+.ep-item b { font-weight: 500; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-item small { font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-empty { padding: 4px 10px; font-size: 12.5px; color: var(--faint); }
+.nav-foot { padding: 14px 22px; font-size: 11.5px; color: var(--faint); border-top: 1px solid var(--edge); flex: none; }
+
+/* The page's own title bar, level with the sidebar's logo. */
+.page-head { display: flex; align-items: center; gap: 12px; height: 72px; margin: 0 -24px 22px; padding: 0 24px; border-bottom: 1px solid var(--edge); }
+.page-head h1 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.02em; display: flex; align-items: center; gap: 11px; }
+.page-head h1 svg { width: 20px; height: 20px; color: var(--muted); }
+.page-head .sub { color: var(--faint); font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-head .sp { flex: 1; }
+.nav-toggle { display: none; }
+.nav-scrim { display: none; }
+
+/* Narrow windows: the sidebar slides in from the menu button. */
+@media (max-width: 1100px) {
+  body.shell { padding-left: 24px; }
+  .side-nav { transform: translateX(-100%); transition: transform .2s ease; }
+  body.nav-open .side-nav { transform: none; }
+  body.nav-open .nav-scrim { display: block; position: fixed; inset: 0; z-index: 39; background: rgba(0, 0, 0, .6); }
+  .nav-toggle { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; flex: none; cursor: pointer;
+    color: var(--text); background: var(--glass); border: 1px solid var(--edge); }
+  .nav-toggle svg { width: 18px; height: 18px; }
 }
-nav.tabs a:hover { color: var(--text); }
-nav.tabs a.on { background: var(--glass-3); color: var(--text); box-shadow: var(--hi); }
+@media (max-width: 560px) {
+  body.shell { padding: 0 16px 24px; }
+  .page-head { margin: 0 -16px 16px; padding: 0 16px; height: 64px; }
+}
 
 /* ---- glass surfaces ----------------------------------------------------------------- */
 .glass, .card {
   position: relative;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .065), rgba(255, 255, 255, .02));
+  background: var(--panel);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
-  box-shadow: var(--shadow), var(--hi);
-  backdrop-filter: blur(28px) saturate(150%);
-  -webkit-backdrop-filter: blur(28px) saturate(150%);
 }
 .card { overflow: hidden; flex: none; }
 
