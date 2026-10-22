@@ -512,7 +512,7 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
     if floor:
         lines.append("- You are holding the floor: you are talking, not interviewing. Do not greet anyone, do not ask the others "
                      "a question, and speak as one continuous stretch of talk.")
-    elif host:
+    elif host and phase != "close":
         lines.append("- You are the host, so you steer. React briefly in your own voice, then either ask one sharp follow-up "
                      "or bring in a guest who has been quiet, by name. When a point has gone back and forth twice, close it "
                      "in a few words and move to a fresh, concrete angle on the topic, linked to what was just said so the turn feels natural. Keep it short: the guests are the stars. "
@@ -530,7 +530,10 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
     elif phase == "sample":
         lines.append("- This is an audition before the show. Introduce yourself in character and give your opening take on the topic.")
     elif phase == "close":
-        lines.append("- This is the last line of the episode. Wrap up in two or three sentences, thank everyone by name and sign off.")
+        guests = ", ".join(c["name"] for c in others) or "your guests"
+        lines.append("- Time is up: this is your sign-off, the last line of the episode. Bring no new topic and ask no question. In this order: "
+                     "if a question was left hanging, answer it in one sentence; give the one thing listeners should take away; "
+                     f"thank {guests} by name, and the listeners; then say goodbye.")
     if floor:
         mins = max(1, round(floor.get("secs", 60) / 60))
         mode = floor.get("mode")
@@ -583,6 +586,8 @@ def turn_cues(me, cast, transcript, user, intent=None, agenda=None, phase="norma
         last = transcript[-1]
         if last["name"] != me["name"] and re.search(rf"\b{re.escape(me['name'])}\b", last["text"]) and "?" in last["text"]:
             cues.append(f"{last['name']} just asked you directly. Answer that first, in your own way.")
+        elif last["name"] == me["name"] and phase == "close":
+            cues.append("Your last line did not sign off yet. Do it now in two sentences: thank everyone by name, and say goodbye.")
         elif user and last["name"] == user and phase == "close":
             cues.append(f"{user} just spoke. Answer them in a few words, then sign off: this is still the last line of the episode.")
         elif user and last["name"] == user and me.get("role") == "host" and _overdue(agenda):
@@ -654,14 +659,25 @@ def clean(text, me, cast):
     return text
 
 
-def limit_sentences(text, n):
-    """Keep at most n sentences. A closing question survives, since it hands the turn to someone."""
+SIGN_OFF = re.compile(r"\b(thank|thanks|goodbye|bye|see you|until next|take care|signing off|that's (all|it) for|catch you)\b", re.I)
+
+
+def signs_off(text):
+    """Whether a sign-off line actually thanks people or says goodbye."""
+    return bool(SIGN_OFF.search(text))
+
+
+def limit_sentences(text, n, keep_end=False):
+    """Keep at most n sentences. A closing question survives, since it hands the turn to someone. With keep_end
+    (a sign-off), the first sentence and the last ones are kept, since the thank-yous and the goodbye come last."""
     # Split only where end punctuation is followed by a space and a new sentence, so "3.5" and "Dr. Hart" stay whole.
     parts = re.split(r"(?<![A-Z][a-z]\.)(?<!\b[A-Z]\.)(?<!\b(?:Mr|Ms|Dr|St|vs)\.)(?<!\bMrs\.)(?<!\bProf\.)(?<!\betc\.)(?<=[.!?])[\"')\]]*\s+(?=[\"'(]?[A-Z0-9])", text)
     parts = [p.strip() for p in parts if p.strip()]
     if len(parts) <= n:
         return text
-    if parts[-1].endswith("?") and n >= 2:
+    if keep_end and n >= 2:
+        parts = parts[:1] + parts[-(n - 1):]
+    elif parts[-1].endswith("?") and n >= 2:
         parts = parts[: n - 1] + [parts[-1]]
     else:
         parts = parts[:n]
@@ -736,6 +752,8 @@ def generate_turn(req):
     spec = LENGTHS[length]
     # Smart turn-taking: the speaker also names who goes next, so a line needs one AI call, not two.
     pick_next = bool(req.get("pickNext")) and phase in ("open", "reopen", "normal") and (not floor or floor["mode"] == "last")
+    if phase == "close" and not floor:  # the sign-off needs room for an answer, the takeaway and the thank-yous, whoever the host is
+        spec = ("three or four sentences, under 75 words", 220, 4)
     if floor:  # a long turn is written in parts of 30 to 170 words, with a token and sentence budget to match
         words = max(30, min(170, int(floor.get("words") or 120)))
         spec = (f"about {words} words of natural, continuous speech", int(words * 1.8) + 60, max(3, round(words / 11)))
@@ -749,7 +767,8 @@ def generate_turn(req):
         line, replan = take_replan(fake_line(me, cast, transcript, phase))
         line, nxt = take_next(line, me, cast, user)
         return {"name": me["name"], "text": f"Wait, hold on. {line}" if req.get("cutIn") else line, "next": nxt if pick_next else None,
-                "replan": replan if me.get("role") == "host" and phase == "normal" else None}
+                "replan": replan if me.get("role") == "host" and phase == "normal" else None,
+                "signedOff": signs_off(line) if phase == "close" else None}
 
     others = [c["name"] for c in cast if c["name"] != me["name"]]
     messages = [
@@ -768,7 +787,7 @@ def generate_turn(req):
     raw, nxt = take_next(raw, me, cast, user)
     # The opening and the sign-off get one extra sentence for the welcome or the thank-yous.
     everyone = cast + ([{"name": user}] if user else [])
-    text = limit_sentences(clean(raw, me, everyone), spec[2] + (1 if phase in ("open", "reopen", "close") else 0))
+    text = limit_sentences(clean(raw, me, everyone), spec[2] + (1 if phase in ("open", "reopen", "close") else 0), keep_end=phase == "close")
     # Handing over to you: the line ends by asking you by name, or the model tags it (clean() strips the tag). The tag
     # only counts when the line talks to you (names you, or answers you), since models also tag questions meant for another guest.
     talks_to_you = bool(user) and (re.search(rf"\b{re.escape(user)}\b", text, re.I) is not None
@@ -782,6 +801,7 @@ def generate_turn(req):
     usage = data.get("usage", {})
     return {"name": me["name"], "text": text, "toYou": to_you, "next": nxt if pick_next and not to_you else None,
             "replan": replan if me.get("role") == "host" and phase == "normal" else None,
+            "signedOff": signs_off(text) if phase == "close" else None,
             "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
 
 
@@ -1040,8 +1060,11 @@ def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
     if phase == "close":
         return []
     if not host:
-        return [f'Run of show: part {agenda["part"]} of {agenda["parts"]}, "{agenda["title"]}". Keep your point inside it, and do not dwell on '
+        cues = [f'Run of show: part {agenda["part"]} of {agenda["parts"]}, "{agenda["title"]}". Keep your point inside it, and do not dwell on '
                 "side details: say what matters and move the conversation forward."] if agenda["title"] else []
+        if _winding_down(agenda):
+            cues.append("The episode is nearly over: make your last point briefly, and do not ask questions or bring up anything new.")
+        return cues
     cues = []
     if agenda["title"]:
         points = "; ".join(agenda["points"])
@@ -1253,6 +1276,8 @@ def fake_line(me, cast, transcript, phase):
     if phase == "reopen":
         return f"Welcome back, everyone. We were in the middle of it. {random.choice(others)}, pick it up from there?"
     if phase == "close":
+        if transcript and transcript[-1]["name"] != me["name"] and random.random() < 0.4:
+            return "And that, really, is the heart of it: small choices add up."
         return f"That's all we have time for. Thank you, {', '.join(others)}. See you next week."
     line = random.choice([
         "That's a fair point, but I see it a little differently.",

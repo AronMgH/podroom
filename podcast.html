@@ -109,28 +109,37 @@
   .sample-out { font-size: 13px; color: var(--muted); font-style: italic; border-left: 2px solid var(--c); padding: 2px 0 2px 10px; }
 
   /* ---- studio ------------------------------------------------------------------------------ */
-  .studio { position: sticky; top: 18px; display: flex; flex-direction: column; overflow: hidden; }
+  /* The studio fills the window under the title bar; the orb (or the thread) takes whatever the header and controls leave. */
+  .studio { position: sticky; top: 18px; display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 112px); min-height: 500px; }
   .now { padding: 18px 20px 0; display: flex; align-items: flex-start; gap: 14px; }
   .now .t { flex: 1; min-width: 0; }
   .now h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now p { margin: 2px 0 0; font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .now .faces { display: flex; padding: 4px 0 0 8px; }
-  .now .plan { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
-  .timeline { display: flex; gap: 3px; height: 5px; }
+  .progress { padding: 16px 20px 0; display: flex; flex-direction: column; gap: 8px; }
+  .prog-now { display: flex; align-items: baseline; gap: 10px; font-size: 13px; min-width: 0; }
+  .prog-now .lbl { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+  .prog-now .ttl { flex: 1; min-width: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+  .prog-now .left { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .prog-now .left.over { color: var(--accent); }
+  .prog-bar { display: flex; align-items: center; gap: 12px; }
+  .prog-bar .clock { flex: none; min-width: 34px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .prog-bar .clock:first-child { color: var(--text); font-weight: 600; }
+  .prog-bar .clock:last-child { text-align: right; }
+  .timeline { flex: 1; display: flex; gap: 3px; height: 4px; }
   .timeline i { position: relative; flex: 1; border-radius: 3px; background: rgba(255, 255, 255, .1); overflow: hidden; }
-  .timeline i.done { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .timeline i.done { background: color-mix(in srgb, var(--accent) 55%, transparent); }
   .timeline i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); }
-  .now .part { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; padding: 4px 10px; border-radius: 999px; font-size: 12px;
-    color: var(--accent); background: var(--accent-soft); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; margin-top: 0; }
   .now .faces .avatar { width: 30px; height: 30px; font-size: 12px; border: 2px solid #141517; margin-left: -8px; }
   .now .tools { display: flex; align-items: center; gap: 8px; flex: none; }
-  .now .clock { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; margin-right: 4px; white-space: nowrap; }
-  .now .clock b { color: var(--text); font-weight: 600; }
-  .dock { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 14px 20px 6px; }
-  .dock-mid { display: flex; align-items: center; gap: 16px; }
-  .dock #restartBtn { justify-self: end; grid-column: 3; }
-  .dock #presenceBtn { justify-self: start; grid-column: 1; }
-  .dock .dock-mid { grid-column: 2; }
+  .dock { display: flex; justify-content: center; padding: 16px 20px 4px; }
+  .dock[hidden] { display: none; }
+  .controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; padding: 0 18px 14px; }
+  .controls:not(:has(> :not([hidden]))) { display: none; }
+  button.btn.mini { padding: 6px 12px; font-size: 12.5px; font-weight: 500; gap: 6px; color: var(--muted); background: var(--glass); box-shadow: none; }
+  button.btn.mini:hover { color: var(--text); }
+  button.btn.mini svg { width: 13px; height: 13px; }
+  button.btn.mini.away { color: var(--accent); border-color: rgba(205, 227, 74, .4); }
   button.ctl {
     width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: none; cursor: pointer; padding: 0;
     color: var(--text); background: var(--glass-2); border: 1px solid var(--edge); transition: background .15s, transform .1s;
@@ -154,7 +163,7 @@
   .viz { height: 64px; margin: 0 16px; border-radius: 18px; background: rgba(0, 0, 0, .28); border: 1px solid var(--edge); flex: none; }
 
   /* orb view */
-  .stage { height: calc(100vh - 350px); min-height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 4px 24px 16px; overflow: hidden; }
+  .stage { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 4px 24px 16px; overflow: hidden; }
   .stage canvas { width: min(230px, 30vh); height: min(230px, 30vh); flex: none; }
   .cap { text-align: center; width: 100%; max-width: 680px; }
   .cap-who { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--c, var(--faint)); margin-bottom: 8px; min-height: 18px; }
@@ -198,7 +207,7 @@
   .seats .avatar svg { width: 15px; height: 15px; }
   .seats .avatar.next { opacity: .75; }
   .seats .avatar.on { opacity: 1; transform: scale(1.18); box-shadow: 0 0 20px var(--c); }
-  .transcript { min-height: 260px; height: calc(100vh - 410px); overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
+  .transcript { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
   .empty { margin: auto; text-align: center; color: var(--muted); max-width: 380px; }
   .empty .orb {
     width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 16px;
@@ -233,6 +242,8 @@
 
   .steer { display: flex; gap: 8px; padding: 0 18px; }
   .steer input { border-radius: 999px; padding-left: 16px; }
+  .steer .ctl { width: 40px; height: 40px; }
+  .steer .ctl svg { width: 16px; height: 16px; }
   #micBtn.rec { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); animation: recpulse 1.2s infinite; }
   #micBtn.busy { opacity: .6; cursor: progress; }
   @keyframes recpulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 18%, transparent); } }
@@ -253,12 +264,13 @@
   @media (max-width: 980px) {
     .grid { grid-template-columns: 1fr; }
     .side, .studio { position: static; max-height: none; }
-    .studio { order: -1; }
-    .transcript { height: 56vh; }
-    .stage { height: auto; min-height: 0; padding: 18px 16px; }
+    .studio { order: -1; height: auto; min-height: 0; }
+    .transcript { flex: none; height: 56vh; }
+    .stage { flex: none; height: auto; padding: 18px 16px; }
   }
   @media (max-width: 560px) {
     .now { flex-wrap: wrap; }
+    .now .t { flex-basis: 100%; }
     .grid2, .formats { grid-template-columns: 1fr; }
     .dialog .dh { flex-wrap: wrap; }
   }
@@ -305,10 +317,9 @@
     <!-- studio -->
     <section class="card studio">
       <div class="now">
-        <div class="t"><h2 id="nowShow"></h2><p id="nowTopic"></p><div class="plan" id="plan" hidden><div class="part" id="nowPart"></div><div class="timeline" id="timeline"></div></div></div>
+        <div class="t"><h2 id="nowShow"></h2><p id="nowTopic"></p></div>
         <div class="tools">
           <span class="live" id="live" hidden><span class="d"></span><span id="liveText">ON AIR</span></span>
-          <span class="clock"><b id="clock">0:00</b> / <span id="turnMax">10:00</span></span>
           <button class="btn icon" id="dlTxt" hidden title="Download the transcript" aria-label="Download the transcript">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg>
           </button>
@@ -318,17 +329,13 @@
           <div class="seg" id="viewSeg" style="flex:none;width:150px"></div>
         </div>
       </div>
-      <!-- The controls, like a player's, under the title: only the big play button before a show, then stop, pause and the mic. -->
-      <div class="dock">
-        <button class="btn ghost" id="presenceBtn" hidden></button>
-        <div class="dock-mid">
-        <button class="ctl" id="stopBtn" hidden title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
-        <button class="ctl main" id="startBtn"></button>
-        <button class="ctl main" id="pauseBtn" hidden></button>
-        <button class="ctl" id="micBtn" hidden></button>
-        </div>
-        <button class="btn ghost" id="restartBtn" hidden title="The same topic and guests from the top, as a new episode">Start over</button>
+      <!-- Where the episode is, like a player's progress bar: the run of show's parts, the clock and the length. -->
+      <div class="progress">
+        <div class="prog-now" id="plan" hidden><span class="lbl" id="partLbl"></span><span class="ttl" id="nowPart"></span><span class="left" id="partLeft"></span></div>
+        <div class="prog-bar"><span class="clock" id="clock">0:00</span><div class="timeline" id="timeline"></div><span class="clock" id="turnMax">10:00</span></div>
       </div>
+      <!-- Before a show, only the big Start (or Resume) button. Once it plays, the controls are the small group under the orb. -->
+      <div class="dock" id="dock"><button class="ctl main" id="startBtn"></button></div>
       <div class="banner" id="keyBanner" hidden>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
         <span id="bannerText"></span>
@@ -345,8 +352,16 @@
       <div class="transcript" id="transcript" hidden>
         <div class="empty"><div class="orb"></div><b>Ready when you are</b>Pick a format or build your cast, set a topic and press Start. Each character is its own AI, and they decide among themselves who speaks next.</div>
       </div>
+      <div class="controls" id="controls">
+        <button class="btn mini" id="presenceBtn" hidden></button>
+        <button class="btn mini" id="stopBtn" hidden title="End the episode here"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop</button>
+        <button class="btn mini" id="pauseBtn" hidden></button>
+        <button class="btn mini" id="restartBtn" hidden title="The same topic and guests from the top, as a new episode">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Start over</button>
+      </div>
       <div class="steer" id="steer" hidden>
         <input type="text" id="noteInput" maxlength="400" disabled>
+        <button class="ctl" id="micBtn" hidden></button>
         <button class="btn" id="noteBtn" disabled>Send</button>
       </div>
       <div class="foot" id="foot"><span class="status" id="status"></span></div>
@@ -364,6 +379,8 @@ const ACCENTS = { "en-us": "American", "en-gb": "British", characters: "Characte
 const LENGTHS = [["short", "Short"], ["medium", "Medium"], ["long", "Long"]];
 const SPEEDS = [[-2, "Very slow"], [-1, "Slow"], [0, "Normal"], [1, "Fast"], [2, "Very fast"]];
 const EXPRS = [[0, "Calm"], [1, "Natural"], [2, "Lively"], [3, "Dramatic"]];
+const ICON_LEAVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M9 8l-4 4 4 4M5 12h10"/></svg>';
+const ICON_JOIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 8l4 4-4 4M14 12H4"/></svg>';
 const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.52.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5Z"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>';
 const ICON_SPARK = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9L12 2.5Zm6.5 12l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9.9-2.6Z"/></svg>';
@@ -526,6 +543,7 @@ function renderNow() {
   $("nowTopic").textContent = state.topic || "No topic yet";
   $("castCount").textContent = cast().length;
   renderSeats();
+  renderPart();
 }
 
 // ===== episode & formats ========================================================================
@@ -965,7 +983,7 @@ async function sampleLine(c, btn, out) {
 
 // ===== the show =====================================================================================
 const sampleSession = crypto.randomUUID();
-const show = { session: null, running: false, paused: false, epoch: 0, turns: [], nextTime: 0, thinkingEl: null, usage: { in: 0, out: 0 },
+const show = { session: null, running: false, heard: 0, closeTries: 0, paused: false, epoch: 0, turns: [], nextTime: 0, thinkingEl: null, usage: { in: 0, out: 0 },
   calls: [], lastCut: -99, ttsBusy: false, clips: {}, wps: {}, floor: null, floorEnd: -99 };
 window.podroomBusy = () => show.running; // the sidebar asks before you leave a playing episode
 // Calls-per-minute budget: at most rpm AI calls in any 60 seconds.
@@ -985,14 +1003,15 @@ function setControls() {
   const startLabel = show.turns.length && show.record ? "Resume" : "Start";
   $("startBtn").innerHTML = ICON_PLAY; $("startBtn").title = startLabel; $("startBtn").setAttribute("aria-label", startLabel);
   $("startBtn").disabled = r || !ok;
-  $("pauseBtn").innerHTML = show.paused ? ICON_PLAY : ICON_PAUSE;
-  $("pauseBtn").title = show.paused ? "Carry on" : "Pause"; $("pauseBtn").setAttribute("aria-label", $("pauseBtn").title);
+  $("pauseBtn").innerHTML = show.paused ? ICON_PLAY + "Play" : ICON_PAUSE + "Pause";
+  $("pauseBtn").title = show.paused ? "Carry on" : "Pause";
   // Only what you can use right now is on screen: Start before a show, Pause and Stop during it, downloads after it.
-  $("startBtn").hidden = r;
+  $("startBtn").hidden = r; $("dock").hidden = r;
   $("pauseBtn").hidden = $("stopBtn").hidden = $("live").hidden = !r;
   $("micBtn").hidden = $("steer").hidden = !r || !show.youHere; // away from the table: nothing to say
   $("presenceBtn").hidden = !r;
-  $("presenceBtn").textContent = show.youHere ? "Leave the table" : "Join the table";
+  $("presenceBtn").innerHTML = show.youHere ? ICON_LEAVE + "Leave the table" : ICON_JOIN + "Join the table";
+  $("presenceBtn").classList.toggle("away", !show.youHere);
   $("presenceBtn").title = show.youHere ? "Step away: the show carries on without you" : "Sit down at the table: they will welcome you in";
   $("restartBtn").hidden = !show.turns.length; // start over: there is something to start over from
   $("restartBtn").disabled = !ok;
@@ -1041,7 +1060,7 @@ async function start() {
   show.part = resume ? show.record.planPart || 0 : 0; show.partStart = null; show.replanning = false;
   show.youHere = you().here !== false; show.event = null; show.askAngle = ""; show.awaitingAngle = ""; show.replanWait = null;
   show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
-  $("clock").textContent = "0:00"; show.signedOff = false;
+  $("clock").textContent = "0:00"; show.heard = 0; show.signedOff = false; show.closeTries = 0;
   show.running = true; show.epoch++;
   show.session = crypto.randomUUID(); // one conversation ID per session, for providers that route by session
   if (resume) saveRecord(true); else newRecord();
@@ -1175,8 +1194,10 @@ function parseFloor(text, people) {
   return null;
 }
 function grantFloor(who, secs, by) {
-  secs = Math.min(FLOOR_MAX, secs, timeLeft()); // never past the time left in the episode
-  if (secs < 30) return false;
+  // Never into the last half minute, which is the sign-off's, and the director keeps short episodes to short turns.
+  if (by === "director" && (state.settings.minutes || 10) < 5) return false;
+  secs = Math.min(FLOOR_MAX, secs, timeLeft() - 30);
+  if (secs < (by === "director" ? 45 : 30)) return false;
   show.floor = { name: who.name, secs, used: 0, segs: 0, by };
   return true;
 }
@@ -1326,29 +1347,34 @@ function nextPart() {
   show.record.planPart = show.part; saveRecord();
   renderPart();
 }
-// The timeline under the title: one bar per part, sized by its minutes, filling as the part plays.
+// The progress bar under the title: one stretch per part of the run of show (sized by its minutes) that fills as the
+// part plays, with the part's name and its time left above. Before there is a plan it is one bar for the whole episode.
 function renderPart() {
   const plan = show.record?.plan;
   $("plan").hidden = !plan?.length;
-  if (!plan?.length) return;
+  if (!plan?.length) { $("timeline").innerHTML = "<i><b></b></i>"; return updatePart(); }
   const at = Math.min(show.part ?? show.record.planPart ?? 0, plan.length - 1);
-  $("timeline").innerHTML = plan.map((x, i) => `<i style="flex:${x.minutes}" class="${i < at ? "done" : ""}" title="${esc(x.title)}: ${esc(x.points.join("; "))}">${i === at ? "<b></b>" : ""}</i>`).join("");
+  $("timeline").innerHTML = plan.map((x, i) => `<i style="flex:${Math.max(1, Math.round(x.minutes * 100))} 1 0" class="${i < at ? "done" : ""}" title="${esc(x.title)}: ${esc(x.points.join("; "))}">${i === at ? "<b></b>" : ""}</i>`).join("");
+  $("partLbl").textContent = plan.length === 1 ? "Angle" : `Part ${at + 1} of ${plan.length}`;
   updatePart();
 }
 function updatePart() {
-  const plan = show.record?.plan;
-  if (!plan?.length || $("plan").hidden) return;
+  const plan = show.record?.plan, fill = $("timeline").querySelector("b"), total = (state.settings.minutes || 10) * 60;
+  if (!plan?.length) { if (fill) fill.style.width = `${Math.min(100, (show.heard / total) * 100)}%`; return; }
   const at = Math.min(show.part ?? 0, plan.length - 1), seg = plan[at];
-  const used = show.running && show.partStart !== null ? plannedSecs() - show.partStart : 0;
+  // Drawn from what you have heard, so the bar keeps pace with the clock beside it (the host plans by what is queued).
+  const used = show.running && show.partStart !== null ? Math.max(0, Math.min(show.heard, plannedSecs()) - show.partStart) : 0;
   const left = Math.max(0, partBudget(at) - used);
-  const fill = $("timeline").querySelector("b");
-  if (fill) fill.style.width = `${Math.min(100, (used / (partBudget(at) || 1)) * 100)}%`;
-  const text = (plan.length === 1 ? `Angle · ${seg.title}` : `Part ${at + 1} of ${plan.length} · ${seg.title}`) + (show.running ? ` · ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")} left` : "");
-  if ($("nowPart").textContent !== text) { $("nowPart").textContent = text; $("nowPart").title = seg.points.join("\n"); }
+  if (fill) fill.style.width = `${Math.min(100, plan.length === 1 ? (show.heard / total) * 100 : (used / (partBudget(at) || 1)) * 100)}%`;
+  if ($("nowPart").textContent !== seg.title) { $("nowPart").textContent = seg.title; $("nowPart").title = seg.points.join("\n"); }
+  // Time is up: the host is signing off, and takes the time that needs.
+  const closing = show.running && plannedSecs() >= total - 20;
+  const text = closing ? "Wrapping up" : show.running && plan.length > 1 ? `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")} left in this part` : "";
+  if ($("partLeft").textContent !== text) { $("partLeft").textContent = text; $("partLeft").classList.toggle("over", closing); }
 }
 
 // Where the episode is: the host opens, and once the audio already queued reaches the chosen length
-// (less a line's worth), the host is told to wrap up. Nobody else knows when that will be.
+// (less a line's worth), the host signs off, taking the time that needs even if it runs a little over.
 function episodePhase() {
   if (aiCount() === 0) return "open";
   if (show.reopen && !show.turns.slice(show.base).some((t) => !t.human)) return "reopen"; // back after a break
@@ -1367,7 +1393,9 @@ async function loop(ep) {
       const phase = episodePhase();
       const { speaker, intent, wantsCut, floor, event } = await chooseNext(phase, ep);
       if (!alive(ep)) return;
-      const cut = phase === "normal" && !floor ? planInterruption(prev, speaker, wantsCut) : null;
+      // No cutting in once the episode is winding down: the host is steering home.
+      const windingDown = timeLeft() < Math.max(30, Math.min(90, 0.15 * (s.minutes || 10) * 60));
+      const cut = phase === "normal" && !floor && !windingDown ? planInterruption(prev, speaker, wantsCut) : null;
       if (phase === "open") { // the host opens with the plan: wait for it, but never for long
         if (!show.record.plan) setStatus("Planning the episode…");
         await Promise.race([show.planReady, sleep(25000)]);
@@ -1415,7 +1443,8 @@ async function loop(ep) {
         + (data.next ? `, picks ${data.next}` : ""));
       if (phase === "open") { show.awaitingAngle = data.toYou && show.askAngle ? show.askAngle : ""; show.askAngle = ""; }
       if (data.toYou && phase !== "close" && show.youHere) return yourTurn(turn, ep);
-      if (phase === "close") show.signedOff = true;
+      // The sign-off: one more try if the host's line did not actually thank everyone and say goodbye, then the end.
+      if (phase === "close" && (data.signedOff !== false || ++show.closeTries >= 2)) show.signedOff = true;
     }
     if (!alive(ep)) return;
     await waitUntil(() => !alive(ep) || ctx.currentTime >= show.nextTime);
@@ -1842,6 +1871,7 @@ $("startBtn").onclick = start;
 $("presenceBtn").onclick = togglePresence;
 // Start over: the same topic and guests from the top, as a new episode. The old one stays in the sidebar.
 $("restartBtn").onclick = () => {
+  if (show.running && !confirm("Stop this episode and start it again from the top, as a new episode?")) return;
   if (show.running) stopShow();
   show.turns = []; show.record = null; $("transcript").innerHTML = "";
   start();
@@ -2056,6 +2086,7 @@ function tick() {
     if (first !== null && show.running) {
       const sec = Math.max(0, Math.floor(now - first));
       $("clock").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+      show.heard = sec;
     }
   }
   updatePart();
