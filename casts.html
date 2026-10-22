@@ -348,9 +348,9 @@ function renderLineups() {
       if (!confirm(`Overwrite “${l.name}” with the ${state.characters.length} characters on the show now?`)) return;
       l.characters = state.characters.map((c) => copyOf(c, "k")); save(); render(); setStatus(`Updated “${l.name}”.`);
     };
-    el.querySelector(".ren").onclick = () => {
-      const name = prompt("Name this cast", l.name);
-      if (name && name.trim()) { l.name = name.trim().slice(0, 80); save(); render(); }
+    el.querySelector(".ren").onclick = async () => {
+      const name = await askName("Rename this cast", l.name, "Rename");
+      if (name) { l.name = name; save(); render(); }
     };
     el.querySelector(".del").onclick = () => {
       if (!confirm(`Delete the saved cast “${l.name}”? The characters in it are not deleted.`)) return;
@@ -385,13 +385,35 @@ $("newChar").onclick = () => {
   state.myTemplates.unshift(c); save(); render();
   openEditor(c, "mine");
 };
-$("saveLineup").onclick = () => {
+$("saveLineup").onclick = async () => {
   if (state.characters.length < 2) return setStatus("Put at least two characters on the show first.", true);
-  const name = prompt("Name this cast", state.show || "My cast");
-  if (!name || !name.trim()) return;
-  state.casts.unshift({ id: newId("k"), name: name.trim().slice(0, 80), characters: state.characters.map((c) => copyOf(c, "k")) });
-  save(); render(); setStatus(`Saved the cast “${name.trim()}”.`);
+  const name = await askName("Save as a cast", state.show || "My cast", "Save");
+  if (!name) return;
+  state.casts.unshift({ id: newId("k"), name, characters: state.characters.map((c) => copyOf(c, "k")) });
+  save(); render(); setStatus(`Saved the cast “${name}”.`);
 };
+
+// A small naming dialog in the page's own overlay. The desktop app's window has no prompt(), so this stands in for it.
+function askName(title, value, action) {
+  return new Promise((resolve) => {
+    const ov = $("editor");
+    ov.innerHTML = `
+      <div class="dialog glass" role="dialog" aria-modal="true" aria-label="${esc(title)}" style="--c:var(--accent);width:min(440px,100%)">
+        <div class="dh"><div style="font-size:17px;font-weight:600">${esc(title)}</div></div>
+        <div class="db"><label class="f">Name<input type="text" class="nm" maxlength="80" value="${esc(value)}"></label></div>
+        <div class="df"><button class="btn ghost cancel">Cancel</button><span class="sp"></span><button class="btn primary ok">${esc(action)}</button></div>
+      </div>`;
+    const input = ov.querySelector(".nm");
+    const done = (v) => { ov.hidden = true; ov.innerHTML = ""; ov.onclick = ov.onkeydown = null; resolve(v); };
+    const ok = () => { const v = input.value.trim().slice(0, 80); if (v) done(v); else input.focus(); };
+    ov.querySelector(".ok").onclick = ok;
+    ov.querySelector(".cancel").onclick = () => done(null);
+    ov.onclick = (e) => { if (e.target === ov) done(null); };
+    ov.onkeydown = (e) => { if (e.key === "Escape") done(null); if (e.key === "Enter") ok(); };
+    ov.hidden = false;
+    input.focus(); input.select();
+  });
+}
 $("toggleHidden").onclick = () => { showHidden = !showHidden; render(); };
 $("search").oninput = (e) => { query = lower(e.target.value); render(); };
 

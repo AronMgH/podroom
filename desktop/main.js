@@ -14,7 +14,8 @@ const HOMEPAGE = "https://github.com/AronMgH/podroom";
 let server = null, win = null, origin = "", quitting = false;
 const logLines = [];
 
-if (!app.requestSingleInstanceLock()) app.quit();
+const firstInstance = app.requestSingleInstanceLock();
+if (!firstInstance) app.quit(); // a second launch only brings the open window forward
 app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 
 // Your show, episodes and downloaded models. Kept apart from Electron's own files in userData.
@@ -126,6 +127,7 @@ function buildMenu() {
 }
 
 app.whenReady().then(async () => {
+  if (!firstInstance) return;
   fs.mkdirSync(app.getPath("userData"), { recursive: true });
   // The mic is the only permission the studio asks for, and only its own pages may have it.
   const allow = (permission, url) => permission === "media" && isOurs(url || "");
