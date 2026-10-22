@@ -912,7 +912,7 @@ def plan_episode(req):
         elapsed = 0.0
     left = max(0.5, minutes - elapsed - 0.4)  # what is left, less the sign-off
     talk = max(0.5, minutes - 0.7)  # a first plan: the episode less the opening and the sign-off
-    parts = max(2, min(5, round(minutes / 3.5)))
+    parts = 1 if minutes <= 3 else 2 if minutes <= 6 else 3 if minutes <= 12 else 4 if minutes <= 25 else 5
     if FAKE:
         if current:
             rest = max(1, len(current) - part)
@@ -937,9 +937,17 @@ def plan_episode(req):
             "Each part has a short title, two to four concrete points or questions to cover, and its minutes.", fmt])
         messages = [{"role": "system", "content": system}, {"role": "user", "content": f"Recent conversation:\n{convo}\n\nThe new plan. JSON only."}]
     else:
+        if parts == 1:
+            shape = (f"That is very short: pick ONE specific, concrete angle on the topic that can land in {talk:.1f} minutes, and plan it as a "
+                     "single part with two or three points that build to a clear takeaway. No tour of subtopics.")
+        else:
+            shape = (f"Split those minutes into {parts} parts that together give listeners what this topic promises, in an order that builds. "
+                     + ("With this much time, go deep: each part earns its place with real stories, evidence or practical detail." if minutes > 12 else
+                        "Keep each part tight: one idea, well made."))
         system = "\n".join(head + [
             f"The episode lasts {minutes} minutes. After a short opening, the talk has {talk:.1f} minutes before the sign-off.",
-            f"Split those minutes into {parts} parts that together give listeners what this topic promises, in an order that builds. "
+            shape,
+            "If the topic is broad, narrow it: choose the most interesting specific angle that fits the time rather than skimming everything. "
             "If the topic is a request (explain something, cheer someone up, help someone decide), the parts deliver it rather than debate it.",
             "Each part has a short title, two to four concrete points or questions to cover, and its share of the minutes.", fmt])
         messages = [{"role": "system", "content": system}, {"role": "user", "content": "Plan the episode. JSON only."}]
@@ -973,7 +981,7 @@ def _agenda(req):
             "part": int(num("part")) or 1, "parts": int(num("parts")) or 1, "next": str(a.get("next") or "").strip()[:80],
             "outline": [str(x).strip()[:80] for x in (a.get("outline") or [])[:6] if str(x).strip()],
             "minsPart": round(num("minsPart"), 1), "minsShow": round(num("minsShow"), 1), "minsTotal": round(num("minsTotal"), 1),
-            "wrap": a.get("wrap") is True}
+            "wrap": a.get("wrap") is True, "checkIn": a.get("checkIn") is True}
 
 
 def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
@@ -982,6 +990,9 @@ def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
         return []
     host = me.get("role") == "host"
     if phase == "open":
+        if host and len(agenda["outline"]) == 1:
+            return [f'Today\'s angle: {agenda["title"] or agenda["outline"][0]}. This is a short episode: in your welcome, say in one sentence what '
+                    "it will nail, then go straight into it."]
         if host and agenda["outline"]:
             return [f"Today's run of show ({agenda['minsTotal']:g} minutes): " + "; ".join(agenda["outline"]) + ". In your welcome, tell the "
                     "listeners in one short sentence what the episode will cover, then start on the first part."]
@@ -989,17 +1000,22 @@ def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
     if phase == "close":
         return []
     if not host:
-        return [f'Run of show: part {agenda["part"]} of {agenda["parts"]}, "{agenda["title"]}". Keep your point inside it.'] if agenda["title"] else []
+        return [f'Run of show: part {agenda["part"]} of {agenda["parts"]}, "{agenda["title"]}". Keep your point inside it, and do not dwell on '
+                "side details: say what matters and move the conversation forward."] if agenda["title"] else []
     cues = []
     if agenda["title"]:
         points = "; ".join(agenda["points"])
         cues.append(f'Run of show: part {agenda["part"]} of {agenda["parts"]}, "{agenda["title"]}"' + (f". It should cover: {points}." if points else "."))
         cues.append(f'About {agenda["minsPart"]:g} minutes left in this part and {agenda["minsShow"]:g} in the episode. You keep the show on this plan '
-                    "and on time: if the talk drifts away from these points, bring it back in a friendly way.")
+                    "and on time: if the talk drifts away from these points, or gets stuck on a side detail, close that in one line and bring it "
+                    "back to what matters, in a friendly way.")
         cues.append("If someone suggests a better direction, a part deserves more or less time, or " + (f"{user} " if user else "the person running the show ")
                     + "asks for a different length, go with it and end your line with [REPLAN: what should change]. The plan and timing will be redone.")
     else:
         cues.append(f'About {agenda["minsShow"]:g} minutes left in the episode. Keep an eye on the time.')
+    if agenda.get("checkIn") and not user_spoke:
+        cues.append("You have let the guests run for a while. Check where the thread has got to: if it is circling a minor point, close it "
+                    "in one line and steer back to this part's points; if it is going well, push it one step deeper with a sharp question.")
     if user_spoke and _overdue(agenda):
         target = f'the next part: "{agenda["next"]}"' if agenda["wrap"] and agenda["next"] else "a close"
         cues.append(f"{user} just spoke, and the time for this is up. If they asked for something (to stay on this, more time, a "
@@ -1010,16 +1026,21 @@ def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
     elif agenda["wrap"] and agenda["next"]:
         cues.append(f'This part\'s time is up. Close it in one sentence and move the show to the next part: "{agenda["next"]}". '
                     "Bring in a guest on it by name.")
-    elif agenda["minsShow"] <= 1.5:
+    elif _winding_down(agenda):
         cues.append("The episode is nearly over: start bringing the conversation to a close, with no new topics.")
     elif agenda["wrap"]:
         cues.append("This part's time is up. Close it in one sentence and steer towards the last word on the topic.")
     return cues
 
 
+def _winding_down(agenda):
+    """The last stretch of the episode: 15% of it, between half a minute and a minute and a half."""
+    return agenda["minsShow"] <= max(0.5, min(1.5, 0.15 * (agenda["minsTotal"] or 10)))
+
+
 def _overdue(agenda):
     """The current part's time is up, or the episode is nearly over."""
-    return bool(agenda) and (agenda["wrap"] or (agenda["minsShow"] <= 1.5 and bool(agenda["title"])))
+    return bool(agenda) and (agenda["wrap"] or (_winding_down(agenda) and bool(agenda["title"])))
 
 
 REPLAN_TAG = re.compile(r"[\[(]\s*replan\s*:\s*([^\]\)\n]{1,300})[\])]", re.I)

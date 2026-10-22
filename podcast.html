@@ -1191,6 +1191,8 @@ async function chooseNext(phase, ep) {
     if (c && show.floor.secs - show.floor.used >= 12) return { speaker: c, floor: floorPlan() };
     show.floor = null;
   }
+  // The host checks in when the guests have had three lines in a row, so a side detail cannot run on forever.
+  if (phase === "normal" && !last?.human && hostQuiet()) return { speaker: host, wantsCut: false };
   if (phase === "normal" && agendaNow()?.wrap) {
     if (!last?.human && last?.name !== host.name) return { speaker: host, wantsCut: false };
     if (last?.human && !people.some((c) => mentions(last.text, [c])) && !parseFloor(last.text, people)) return { speaker: host, wantsCut: false };
@@ -1287,6 +1289,10 @@ async function replan(note, ep) {
     setStatus(longer ? `New plan: the episode is now ${d.minutes} minutes.` : "The host changed the plan.");
   } catch { setStatus(""); } finally { show.replanning = false; }
 }
+function hostQuiet() {
+  const people = cast(), host = people.find((c) => c.role === "host") || people[0], recent = show.turns.slice(-3);
+  return people.length >= 3 && recent.length === 3 && !recent.some((t) => t.human || t.name === host.name);
+}
 // Seconds part i has. The current part's clock starts with its first line after the opening (or after a replan).
 const partBudget = (i) => (show.record?.plan?.[i]?.minutes || 0) * 60;
 function agendaNow() {
@@ -1297,7 +1303,7 @@ function agendaNow() {
   const seg = plan[show.part], left = partBudget(show.part) - (show.partStart === null ? 0 : plannedSecs() - show.partStart);
   return { ...base, title: seg.title, points: seg.points, part: show.part + 1, parts: plan.length, next: plan[show.part + 1]?.title || "",
     outline: plan.map((x) => `${x.title} (${Math.round(x.minutes * 10) / 10} min)`),
-    minsPart: Math.max(0, left / 60), wrap: left <= 0 && show.part < plan.length - 1 };
+    minsPart: Math.max(0, left / 60), wrap: left <= 0 && show.part < plan.length - 1, checkIn: hostQuiet() };
 }
 function nextPart() {
   show.part++; show.partStart = plannedSecs();
@@ -1321,7 +1327,7 @@ function updatePart() {
   const left = Math.max(0, partBudget(at) - used);
   const fill = $("timeline").querySelector("b");
   if (fill) fill.style.width = `${Math.min(100, (used / (partBudget(at) || 1)) * 100)}%`;
-  const text = `Part ${at + 1} of ${plan.length} · ${seg.title}` + (show.running ? ` · ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")} left` : "");
+  const text = (plan.length === 1 ? `Angle · ${seg.title}` : `Part ${at + 1} of ${plan.length} · ${seg.title}`) + (show.running ? ` · ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")} left` : "");
   if ($("nowPart").textContent !== text) { $("nowPart").textContent = text; $("nowPart").title = seg.points.join("\n"); }
 }
 
