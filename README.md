@@ -1,8 +1,10 @@
-# Podcast Studio
+<p align="center"><img src="icon.svg" width="96" alt="Podroom"></p>
 
-A local AI podcast studio. Create characters with their own voices, personalities and talking speed,
-give them a topic, and they hold an unscripted conversation that is voiced live with
-[Phonon TTS](https://huggingface.co/gradium/phonon-40m-en). Also includes a simple text-to-speech page.
+# Podroom
+
+An AI podcast studio that runs on your computer. Create characters with their own voices, personalities and talking speed,
+give them a topic, and they hold an unscripted conversation that is voiced live, on your own
+machine, with [Phonon TTS](https://huggingface.co/gradium/phonon-40m-en). Also includes a simple text-to-speech page.
 
 - **Podcast**: characters, templates, an AI director that decides who speaks next, interruptions,
   listener reactions, you at the table and in charge (type or talk: they stop, listen and do what you
@@ -45,22 +47,22 @@ the show waits for you and the mic opens by itself as soon as their line ends. C
 ## Run
 
 ```bash
-./phonon-tts.sh
+./podroom.sh
 ```
 
 This starts the server on http://127.0.0.1:7860 and opens it as an app window. Pick a provider and add its API key in
-the app under Settings (or set `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY` or `OPENCODE_API_KEY`); keys are stored in `~/.config/phonon-tts/` and never sent back to the browser.
-`phonon-tts.desktop` is a desktop launcher. Install it with the paths filled in for where you cloned this:
+the app under Settings (or set `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY` or `OPENCODE_API_KEY`); keys are stored in `~/.config/podroom/` and never sent back to the browser.
+`podroom.desktop` is a desktop launcher. Install it with the paths filled in for where you cloned this:
 
 ```bash
-sed "s#@DIR@#$PWD#g" phonon-tts.desktop > ~/.local/share/applications/phonon-tts.desktop
+sed "s#@DIR@#$PWD#g" podroom.desktop > ~/.local/share/applications/podroom.desktop
 ```
 
 With OpenRouter, choose "Other OpenRouter model…" in the model list to search every model it offers or paste any
 model ID from [openrouter.ai/models](https://openrouter.ai/models). Thinking is turned off where the model allows it, since it only
 adds delay to spoken lines.
 
-Set `PHONON_FAKE_LLM=1` to test with canned lines and no API key, and `PHONON_PORT` to change the port.
+Set `PODROOM_FAKE_LLM=1` to test with canned lines and no API key, and `PODROOM_PORT` to change the port.
 
 ## License
 

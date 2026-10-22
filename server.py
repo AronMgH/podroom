@@ -1,4 +1,4 @@
-"""Local web app for Phonon TTS.
+"""Podroom: a local AI podcast studio and text-to-speech web app, voiced with Phonon TTS.
 
 Serves the UI on http://127.0.0.1:7860 and streams speech as raw float32 PCM
 while it is generated, so the browser can start playing within half a second.
@@ -22,7 +22,7 @@ import ptts
 import podcast
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-HOST, PORT = "127.0.0.1", int(os.environ.get("PHONON_PORT", "7860"))
+HOST, PORT = "127.0.0.1", int(os.environ.get("PODROOM_PORT") or os.environ.get("PHONON_PORT") or "7860")
 MAX_CHARS = 20000
 HF_CACHE = os.path.join(os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface")), "hub")
 
@@ -415,7 +415,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = f.read()
             self.send_response(200)
             self.send_header("Content-Type", "audio/wav")
-            self.send_header("Content-Disposition", 'attachment; filename="phonon-%d.wav"' % int(time.time()))
+            self.send_header("Content-Disposition", 'attachment; filename="podroom-%d.wav"' % int(time.time()))
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -427,7 +427,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"Phonon TTS on http://{HOST}:{PORT}", flush=True)
+    print(f"Podroom on http://{HOST}:{PORT}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

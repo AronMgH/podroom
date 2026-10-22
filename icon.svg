@@ -1,1 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6d5dfc"/><stop offset="1" stop-color="#a89dff"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><g fill="#fff"><rect x="13" y="26" width="6" height="12" rx="3"/><rect x="23" y="18" width="6" height="28" rx="3"/><rect x="33" y="11" width="6" height="42" rx="3"/><rect x="43" y="22" width="6" height="20" rx="3"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="20%" r="120%">
+      <stop offset="0" stop-color="#e6f57a"/>
+      <stop offset=".45" stop-color="#cde34a"/>
+      <stop offset="1" stop-color="#6f8a12"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <!-- the room: a doorway arch around the mic -->
+  <path d="M12 54V30a20 20 0 0 1 40 0v24" fill="none" stroke="#11140a" stroke-width="3.5" stroke-linecap="round" opacity=".28"/>
+  <!-- studio mic -->
+  <rect x="25" y="14" width="14" height="24" rx="7" fill="#11140a"/>
+  <path d="M29 21h6M29 26h6M29 31h6" stroke="#cde34a" stroke-width="2.2" stroke-linecap="round" opacity=".7"/>
+  <path d="M19 31a13 13 0 0 0 26 0" fill="none" stroke="#11140a" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 44v7M25 52h14" stroke="#11140a" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Podroom
+Comment=AI podcast studio that runs on your computer
+Exec=@DIR@/podroom.sh
+Icon=@DIR@/icon.svg
+Terminal=false
+Categories=Audio;AudioVideo;
+StartupWMClass=Podroom

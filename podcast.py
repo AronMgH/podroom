@@ -16,9 +16,10 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, "podcast.json")
 EPISODE_DIR = os.path.join(HERE, "episodes")
-KEY_DIR = os.path.expanduser("~/.config/phonon-tts")
-FAKE = os.environ.get("PHONON_FAKE_LLM") == "1"  # canned lines, for testing without a key
-USER_AGENT = "phonon-podcast/1.0"
+KEY_DIR = os.path.expanduser("~/.config/podroom")
+OLD_KEY_DIR = os.path.expanduser("~/.config/phonon-tts")  # where keys lived before the rename; still read
+FAKE = (os.environ.get("PODROOM_FAKE_LLM") or os.environ.get("PHONON_FAKE_LLM")) == "1"  # canned lines, for testing without a key
+USER_AGENT = "podroom/1.0"
 
 # OpenAI-style chat completion providers. "thinking" lists model prefixes that accept
 # {"thinking": {"type": "disabled"}}; other models get a larger token budget instead,
@@ -74,7 +75,7 @@ PROVIDERS = {
         "catalog": "https://openrouter.ai/api/v1/models",
         "thinking": (),
         # App attribution: optional, shows the app on openrouter.ai rankings.
-        "headers": {"HTTP-Referer": "https://github.com/AronMgH/podcast-studio", "X-OpenRouter-Title": "Podcast Studio"},
+        "headers": {"HTTP-Referer": "https://github.com/AronMgH/podcast-studio", "X-OpenRouter-Title": "Podroom"},
     },
 }
 MODEL_ID = re.compile(r"^[~A-Za-z0-9._\-/:]{1,120}$")
@@ -304,13 +305,14 @@ def key_file(provider):
 
 
 def api_key(provider):
-    try:
-        with open(key_file(provider)) as f:
-            key = f.read().strip()
-            if key:
-                return key
-    except OSError:
-        pass
+    for path in (key_file(provider), os.path.join(OLD_KEY_DIR, f"{provider}.key")):
+        try:
+            with open(path) as f:
+                key = f.read().strip()
+                if key:
+                    return key
+        except OSError:
+            pass
     return os.environ.get(PROVIDERS[provider]["env"], "").strip()
 
 
@@ -324,10 +326,11 @@ def save_key(provider, key):
 
 
 def delete_key(provider):
-    try:
-        os.unlink(key_file(provider))
-    except OSError:
-        pass
+    for path in (key_file(provider), os.path.join(OLD_KEY_DIR, f"{provider}.key")):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 _catalogs = {}  # provider id -> (fetched at, {model id: entry})

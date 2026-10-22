@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Phonon TTS
-Comment=AI podcast studio and text-to-speech with Phonon
-Exec=@DIR@/phonon-tts.sh
-Icon=@DIR@/icon.svg
-Terminal=false
-Categories=Audio;AudioVideo;
-StartupWMClass=PhononTTS
