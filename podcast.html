@@ -1191,7 +1191,10 @@ async function chooseNext(phase, ep) {
     if (c && show.floor.secs - show.floor.used >= 12) return { speaker: c, floor: floorPlan() };
     show.floor = null;
   }
-  if (phase === "normal" && !last?.human && last?.name !== host.name && agendaNow()?.wrap) return { speaker: host, wantsCut: false };
+  if (phase === "normal" && agendaNow()?.wrap) {
+    if (!last?.human && last?.name !== host.name) return { speaker: host, wantsCut: false };
+    if (last?.human && !people.some((c) => mentions(last.text, [c])) && !parseFloor(last.text, people)) return { speaker: host, wantsCut: false };
+  }
   if (phase === "normal" && last?.human) {
     const f = parseFloor(last.text, people);
     if (f && grantFloor(f.who, f.secs, "you")) return { speaker: f.who, floor: floorPlan() };
@@ -1361,7 +1364,7 @@ async function loop(ep) {
       if (!alive(ep)) return;
       if (data.usage) { show.usage.in += data.usage.in; show.usage.out += data.usage.out; }
       // The host has just closed a part whose time was up (unless they were answering you): on to the next one.
-      if (agenda?.wrap && speaker.role === "host" && !floor && !prev?.human) nextPart();
+      if (agenda?.wrap && speaker.role === "host" && !floor && !data.replan) nextPart();
       if (data.replan) replan(data.replan, ep); // the host changed course or timing: redo the plan from here, in the background
       if (floor && show.floor?.name === speaker.name) { // count the time this part will take; end the floor when it is used up
         show.floor.used += data.text.split(/\s+/).length / wpsOf(speaker.name); show.floor.segs++;

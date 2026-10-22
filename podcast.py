@@ -565,6 +565,8 @@ def turn_cues(me, cast, transcript, user, intent=None, agenda=None, phase="norma
             cues.append(f"{last['name']} just asked you directly. Answer that first, in your own way.")
         elif user and last["name"] == user and phase == "close":
             cues.append(f"{user} just spoke. Answer them in a few words, then sign off: this is still the last line of the episode.")
+        elif user and last["name"] == user and me.get("role") == "host" and _overdue(agenda):
+            pass  # the run-of-show cue says how to answer them and keep to time
         elif user and last["name"] == user:
             cues.append(f"{user}, who runs this show, just spoke. Do what they asked, fully and right now, and talk to them "
                         "directly. If they asked someone else, give way with one short line.")
@@ -998,7 +1000,12 @@ def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
                     + "asks for a different length, go with it and end your line with [REPLAN: what should change]. The plan and timing will be redone.")
     else:
         cues.append(f'About {agenda["minsShow"]:g} minutes left in the episode. Keep an eye on the time.')
-    if user_spoke:
+    if user_spoke and _overdue(agenda):
+        target = f'the next part: "{agenda["next"]}"' if agenda["wrap"] and agenda["next"] else "a close"
+        cues.append(f"{user} just spoke, and the time for this is up. If they asked for something (to stay on this, more time, a "
+                    "different direction), do it and end your line with [REPLAN: what they want]. If it was a passing remark, answer "
+                    f"it warmly in a sentence, then move the show on to {target}.")
+    elif user_spoke:
         cues.append(f"{user} just spoke: do what they asked first. The plan can wait until that is done.")
     elif agenda["wrap"] and agenda["next"]:
         cues.append(f'This part\'s time is up. Close it in one sentence and move the show to the next part: "{agenda["next"]}". '
@@ -1008,6 +1015,11 @@ def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
     elif agenda["wrap"]:
         cues.append("This part's time is up. Close it in one sentence and steer towards the last word on the topic.")
     return cues
+
+
+def _overdue(agenda):
+    """The current part's time is up, or the episode is nearly over."""
+    return bool(agenda) and (agenda["wrap"] or (agenda["minsShow"] <= 1.5 and bool(agenda["title"])))
 
 
 REPLAN_TAG = re.compile(r"[\[(]\s*replan\s*:\s*([^\]\)\n]{1,300})[\])]", re.I)
