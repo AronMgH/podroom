@@ -116,24 +116,21 @@
   .now h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now p { margin: 2px 0 0; font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .now .faces { display: flex; padding: 4px 0 0 8px; }
-  .progress { padding: 16px 20px 0; display: flex; flex-direction: column; gap: 8px; }
+  .transport { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-top: 1px solid var(--edge); flex: none; }
+  .progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
   .prog-now { display: flex; align-items: baseline; gap: 10px; font-size: 13px; min-width: 0; }
   .prog-now .lbl { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
   .prog-now .ttl { flex: 1; min-width: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
   .prog-now .left { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
   .prog-now .left.over { color: var(--accent); }
   .prog-bar { display: flex; align-items: center; gap: 12px; }
-  .prog-bar .clock { flex: none; min-width: 34px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .prog-bar .clock:first-child { color: var(--text); font-weight: 600; }
-  .prog-bar .clock:last-child { text-align: right; }
+  .prog-bar .clock { flex: none; min-width: 38px; text-align: right; font-size: 12px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
   .timeline { flex: 1; display: flex; gap: 3px; height: 4px; }
   .timeline i { position: relative; flex: 1; border-radius: 3px; background: rgba(255, 255, 255, .1); overflow: hidden; }
   .timeline i.done { background: color-mix(in srgb, var(--accent) 55%, transparent); }
   .timeline i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); }
   .now .faces .avatar { width: 30px; height: 30px; font-size: 12px; border: 2px solid #141517; margin-left: -8px; }
   .now .tools { display: flex; align-items: center; gap: 8px; flex: none; }
-  .dock { display: flex; justify-content: center; padding: 16px 20px 4px; }
-  .dock[hidden] { display: none; }
   .controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; padding: 0 18px 14px; }
   .controls:not(:has(> :not([hidden]))) { display: none; }
   button.btn.mini { padding: 6px 12px; font-size: 12.5px; font-weight: 500; gap: 6px; color: var(--muted); background: var(--glass); box-shadow: none; }
@@ -148,9 +145,10 @@
   button.ctl:active { transform: scale(.95); }
   button.ctl:disabled { opacity: .4; cursor: default; transform: none; }
   button.ctl svg { width: 18px; height: 18px; }
-  button.ctl.main { width: 62px; height: 62px; color: var(--accent-ink); background: var(--accent); border: 0; box-shadow: 0 0 26px var(--accent-glow); }
+  button.ctl.main { width: 50px; height: 50px; color: var(--accent-ink); background: var(--accent); border: 0; box-shadow: 0 0 22px var(--accent-glow); }
   button.ctl.main:hover { background: #dbef5c; }
-  button.ctl.main svg { width: 24px; height: 24px; }
+  button.ctl.main:disabled { box-shadow: none; }
+  button.ctl.main svg { width: 20px; height: 20px; }
   .live {
     display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--faint);
     padding: 6px 11px; border-radius: 999px; border: 1px solid var(--edge); background: var(--glass);
@@ -160,7 +158,7 @@
   .live.on .d { background: var(--danger); box-shadow: 0 0 10px var(--danger); animation: pulse 1.2s ease-in-out infinite; }
   .live.paused { color: var(--warn); }
   .live.paused .d { background: var(--warn); }
-  .viz { height: 64px; margin: 0 16px; border-radius: 18px; background: rgba(0, 0, 0, .28); border: 1px solid var(--edge); flex: none; }
+  .viz { height: 64px; margin: 14px 16px 0; border-radius: 18px; background: rgba(0, 0, 0, .28); border: 1px solid var(--edge); flex: none; }
 
   /* orb view */
   .stage { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 4px 24px 16px; overflow: hidden; }
@@ -209,12 +207,6 @@
   .seats .avatar.on { opacity: 1; transform: scale(1.18); box-shadow: 0 0 20px var(--c); }
   .transcript { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
   .empty { margin: auto; text-align: center; color: var(--muted); max-width: 380px; }
-  .empty .orb {
-    width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 16px;
-    background: radial-gradient(60% 60% at 35% 30%, rgba(255, 255, 255, .5), transparent 60%),
-      radial-gradient(80% 80% at 50% 80%, rgba(205, 227, 74, .55), rgba(72, 92, 168, .35) 70%, transparent);
-    border: 1px solid var(--edge-2); box-shadow: 0 0 60px rgba(205, 227, 74, .2), inset 0 0 20px rgba(255, 255, 255, .15);
-  }
   .empty b { color: var(--text); display: block; font-size: 16px; margin-bottom: 4px; font-weight: 600; }
   .turn { display: flex; gap: 11px; align-items: flex-start; }
   .turn .avatar { width: 32px; height: 32px; font-size: 13px; margin-top: 2px; }
@@ -329,13 +321,6 @@
           <div class="seg" id="viewSeg" style="flex:none;width:150px"></div>
         </div>
       </div>
-      <!-- Where the episode is, like a player's progress bar: the run of show's parts, the clock and the length. -->
-      <div class="progress">
-        <div class="prog-now" id="plan" hidden><span class="lbl" id="partLbl"></span><span class="ttl" id="nowPart"></span><span class="left" id="partLeft"></span></div>
-        <div class="prog-bar"><span class="clock" id="clock">0:00</span><div class="timeline" id="timeline"></div><span class="clock" id="turnMax">10:00</span></div>
-      </div>
-      <!-- Before a show, only the big Start (or Resume) button. Once it plays, the controls are the small group under the orb. -->
-      <div class="dock" id="dock"><button class="ctl main" id="startBtn"></button></div>
       <div class="banner" id="keyBanner" hidden>
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
         <span id="bannerText"></span>
@@ -350,12 +335,19 @@
       </div>
       <div class="viz" id="vizWrap" hidden><canvas id="viz"></canvas></div>
       <div class="transcript" id="transcript" hidden>
-        <div class="empty"><div class="orb"></div><b>Ready when you are</b>Pick a format or build your cast, set a topic and press Start. Each character is its own AI, and they decide among themselves who speaks next.</div>
+        <div class="empty"><b>Ready when you are</b>Pick a format or build your cast, set a topic and press play. Each character is its own AI, and they decide among themselves who speaks next.</div>
+      </div>
+      <!-- The player: one button (Start, then Pause / Play) beside where the episode is: the run of show's parts, the clock and the length. -->
+      <div class="transport">
+        <button class="ctl main" id="startBtn"></button>
+        <div class="progress">
+          <div class="prog-now" id="plan" hidden><span class="lbl" id="partLbl"></span><span class="ttl" id="nowPart"></span><span class="left" id="partLeft"></span></div>
+          <div class="prog-bar"><div class="timeline" id="timeline"></div><span class="clock" id="clock" title="Time left">10:00</span></div>
+        </div>
       </div>
       <div class="controls" id="controls">
         <button class="btn mini" id="presenceBtn" hidden></button>
         <button class="btn mini" id="stopBtn" hidden title="End the episode here"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop</button>
-        <button class="btn mini" id="pauseBtn" hidden></button>
         <button class="btn mini" id="restartBtn" hidden title="The same topic and guests from the top, as a new episode">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Start over</button>
       </div>
@@ -553,7 +545,7 @@ function renderEpisode() {
   $("show").oninput = () => { state.show = $("show").value; save(); };
   $("topic").oninput = () => { state.topic = $("topic").value; save(); };
   s.minutes ||= 10;
-  const showTarget = () => ($("turnMax").textContent = `${s.minutes}:00`);
+  const showTarget = () => { if (!show.running) $("clock").textContent = `${s.minutes}:00`; }; // the clock counts down from the length
   $("minutes").value = s.minutes; showTarget();
   $("minutes").oninput = () => { s.minutes = Math.max(1, Math.min(120, parseInt($("minutes").value) || 10)); showTarget(); save(); };
 }
@@ -1000,14 +992,13 @@ function setStatus(msg, err) { $("status").textContent = msg || ""; $("status").
 function setControls() {
   if (!status) return;
   const r = show.running, ok = keyOk();
-  const startLabel = show.turns.length && show.record ? "Resume" : "Start";
-  $("startBtn").innerHTML = ICON_PLAY; $("startBtn").title = startLabel; $("startBtn").setAttribute("aria-label", startLabel);
-  $("startBtn").disabled = r || !ok;
-  $("pauseBtn").innerHTML = show.paused ? ICON_PLAY + "Play" : ICON_PAUSE + "Pause";
-  $("pauseBtn").title = show.paused ? "Carry on" : "Pause";
-  // Only what you can use right now is on screen: Start before a show, Pause and Stop during it, downloads after it.
-  $("startBtn").hidden = r; $("dock").hidden = r;
-  $("pauseBtn").hidden = $("stopBtn").hidden = $("live").hidden = !r;
+  // The player's one button: Start (or Resume) before a show, Pause and Play during it.
+  const label = r ? (show.paused ? "Play" : "Pause") : show.turns.length && show.record ? "Resume" : "Start";
+  $("startBtn").innerHTML = r && !show.paused ? ICON_PAUSE : ICON_PLAY; $("startBtn").title = label; $("startBtn").setAttribute("aria-label", label);
+  $("startBtn").disabled = !r && !ok;
+  // Only what you can use right now is on screen: Stop during a show, downloads after it, the level meter while it plays.
+  $("stopBtn").hidden = $("live").hidden = !r;
+  $("vizWrap").hidden = !r || view !== "thread";
   $("micBtn").hidden = $("steer").hidden = !r || !show.youHere; // away from the table: nothing to say
   $("presenceBtn").hidden = !r;
   $("presenceBtn").innerHTML = show.youHere ? ICON_LEAVE + "Leave the table" : ICON_JOIN + "Join the table";
@@ -1060,7 +1051,7 @@ async function start() {
   show.part = resume ? show.record.planPart || 0 : 0; show.partStart = null; show.replanning = false;
   show.youHere = you().here !== false; show.event = null; show.askAngle = ""; show.awaitingAngle = ""; show.replanWait = null;
   show.nextTime = 0; show.usage = { in: 0, out: 0 }; show.paused = false; show.calls = []; show.lastCut = -99; show.floor = null; show.floorEnd = -99; show.floorAsked = -99;
-  $("clock").textContent = "0:00"; show.heard = 0; show.signedOff = false; show.closeTries = 0; show.closeAsked = false; show.ending = false; show.quiet = false;
+  $("clock").textContent = `${state.settings.minutes || 10}:00`; show.heard = 0; show.signedOff = false; show.closeTries = 0; show.closeAsked = false; show.ending = false; show.quiet = false;
   show.running = true; show.epoch++;
   show.session = crypto.randomUUID(); // one conversation ID per session, for providers that route by session
   if (resume) saveRecord(true); else newRecord();
@@ -1933,7 +1924,7 @@ function saveRecord(now) {
   }, now ? 0 : 300);
 }
 
-$("startBtn").onclick = start;
+$("startBtn").onclick = () => (show.running ? togglePause() : start());
 $("presenceBtn").onclick = togglePresence;
 // Start over: the same topic and guests from the top, as a new episode. The old one stays in the sidebar.
 $("restartBtn").onclick = () => {
@@ -1942,7 +1933,6 @@ $("restartBtn").onclick = () => {
   show.turns = []; show.record = null; $("transcript").innerHTML = "";
   start();
 };
-$("pauseBtn").onclick = togglePause;
 $("stopBtn").onclick = stopShow;
 $("noteBtn").onclick = submitBox;
 $("micBtn").innerHTML = ICON_MIC;
@@ -1985,7 +1975,7 @@ function renderView() {
   seg($("viewSeg"), [["orb", "Orb"], ["thread", "Thread"]], view, (v) => { view = v; store.set("view", v); renderView(); });
   $("stage").hidden = view !== "orb";
   setControls();
-  $("transcript").hidden = $("vizWrap").hidden = view !== "thread";
+  $("transcript").hidden = view !== "thread";
   if (view === "thread") scrollDown();
 }
 
@@ -2050,7 +2040,7 @@ function updateStage(now) {
       $("capWho").textContent = "";
       $("capLine").className = "cap-line idle";
       $("capLine").innerHTML = show.running ? "" : msg && show.turns.length ? `<b>${esc(msg)}</b>Switch to Thread to read it all.`
-        : "<b>Ready when you are.</b>Pick a format, set a topic and press Start.";
+        : "<b>Ready when you are.</b>Pick a format, set a topic and press play.";
       stageState.words = [];
     }
   }
@@ -2150,8 +2140,8 @@ function tick() {
     });
     const first = show.turns.find((t) => !t.restored)?.start ?? null;
     if (first !== null && show.running) {
-      const sec = Math.max(0, Math.floor(now - first));
-      $("clock").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+      const sec = Math.max(0, Math.floor(now - first)), left = Math.max(0, (state.settings.minutes || 10) * 60 - sec);
+      $("clock").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
       show.heard = sec;
     }
   }
