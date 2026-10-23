@@ -526,7 +526,7 @@ class RateLimited(RuntimeError):
         self.retry_after = retry_after
 
 
-def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, cues=(), floor=None, pick_next=False, user_here=True):
+def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, cues=(), floor=None, pick_next=False, user_here=True, facts=()):
     spec = LENGTHS[length] if isinstance(length, str) else length
     others = [c for c in cast if c["name"] != me["name"]]
     host = me.get("role") == "host"
@@ -561,6 +561,12 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
         "People listen to this for fun. Be specific, surprising and alive: real details, fresh examples, humour where it fits. "
         "If the topic is a request (cheer someone up, explain something, help them decide), the show exists to deliver it: "
         "give them the thing itself, such as the story, the joke, the tip or the answer, rather than debating whether it can be done.",
+    ]
+    if facts:
+        lines.append(f"Settled on this episode by {user or 'the person running the show'}. These are true: never contradict them, "
+                     "and if anything said earlier on the show disagrees, that earlier line was wrong:")
+        lines += [f"- {f}" for f in facts]
+    lines += [
         "",
         "Rules:",
         f'- Reply with only what {me["name"]} says next, out loud: {spec[0]}.',
@@ -576,9 +582,16 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
         "\"No, no, no\" or \"Wait, really?\". Vary your shape: sometimes a blunt one-liner, sometimes a quick story.",
         "- Never write lines for anyone else and never start with your own name. Do not repeat points already made "
         "and do not summarise the conversation.",
+        "- Your opinions can be as bold as you like, but never make up facts: the lyrics, translation or meaning of a real song, "
+        "word or title, what a real person said or did, dates, numbers or quotes. If you are not sure, say so plainly"
+        + (f", or ask someone at the table who would know, such as {user}." if user and user_here else ".")
+        + " Never say how long the episode has been running.",
         *([f"- {user} is in charge and their word is final. If they ask for something, do it at once and exactly, even if it "
            "takes the conversation somewhere new. Never treat their request as a distraction. Talk to them directly, by name, "
            "like anyone else at the table.",
+           f"- Disagree with {user}'s ideas if you like, but never mock or belittle them. When {user} corrects a fact or says "
+           "someone got something wrong, they are right: accept it in a few words and build on the corrected version. Never "
+           "repeat or defend the old one.",
            f"- When your line hands the conversation to {user} (you ask them something, or ask them to go on or finish "
            "their thought), end it with the tag [HANDOVER]. Nobody else speaks until they answer."] if user and user_here else []),
     ]
@@ -589,6 +602,7 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
         lines.append("- You are the host, so you steer. React briefly in your own voice, then either ask one sharp follow-up "
                      "or bring in a guest who has been quiet, by name. When a point has gone back and forth twice, close it "
                      "in a few words and move to a fresh, concrete angle on the topic, linked to what was just said so the turn feels natural. Keep it short: the guests are the stars. "
+                     "Never sign off or say the show is over: the sign-off is its own line, and you will be told when it is time. "
                      + (f"What {user} asks for always comes before your steering." if user else ""))
     else:
         lines.append("- You are a guest, not an interviewer. You answer, argue, tell stories and give opinions. "
@@ -623,7 +637,8 @@ def system_prompt(me, cast, show, topic, length, phase, cut_in=None, user=None, 
                          "New content only, nothing repeated, no wrap-up yet.")
         elif mode == "last":
             lines.append("- This is the end of your time at the mic. Finish your point with one strong closing beat and hand the "
-                         "conversation back.")
+                         "conversation back to the others at the table"
+                         + (f". Do not talk to {user} unless they spoke to you." if user and not by_boss else "."))
     for cue in cues:
         lines.append(f"- {cue}")
     if pick_next and others:
@@ -669,8 +684,11 @@ def turn_cues(me, cast, transcript, user, intent=None, agenda=None, phase="norma
         elif user and last["name"] == user and me.get("role") == "host" and _overdue(agenda):
             pass  # the run-of-show cue says how to answer them and keep to time
         elif user and last["name"] == user:
-            cues.append(f"{user}, who runs this show, just spoke. Do what they asked, fully and right now, and talk to them "
-                        "directly. If they asked someone else, give way with one short line.")
+            cues.append(f"{user}, who runs this show, just spoke. Read it against the conversation above, then do what they asked, "
+                        "fully and right now, and talk to them directly. If they asked someone else, give way with one short line. "
+                        "If they are pointing out a mistake (a question meant for them went to someone else, a wrong fact, someone "
+                        "talking over them), say in a few words exactly what went wrong and put it right. A question that was theirs "
+                        "goes straight back to them, ending with [HANDOVER]: never answer it for them.")
     if intent:
         cues.append(f"What you want to do now: {intent}")
     # When what you said was the plan change itself, the page has made it already: the event says so.
@@ -740,13 +758,26 @@ def clean(text, me, cast):
     return text
 
 
-SIGN_OFF = re.compile(r"\b(goodbye|bye|see you|until next|take care|signing off|that's (all|it) for|catch you|thanks for listening|thank you for listening)\b", re.I)
+SIGN_OFF = re.compile(r"\b(goodbye|bye|see you|until next|take care|signing off|that's (all|it) for|catch you|thanks for listening|thank you for listening"
+                      r"|that's (the|our) show|that's a wrap|we're out\b(?! of))\b", re.I)
+# Phrases that end the episode, as opposed to a "goodbye" inside a story. Before the sign-off they are cut out,
+# so a host who wraps up early does not leave the guests talking after the show has said it is over.
+ENDS_SHOW = re.compile(r"\b(that's (the|our) show|that's a wrap|that's (all|it) for (today|tonight|this episode|now)|we're out\b(?! of)"
+                       r"|signing off|thanks for listening|thank you for listening|until next time|see you next (time|week))", re.I)
 SENTENCES = re.compile(r"(?<![A-Z][a-z]\.)(?<!\b[A-Z]\.)(?<!\b(?:Mr|Ms|Dr|St|vs)\.)(?<!\bMrs\.)(?<!\bProf\.)(?<!\betc\.)(?<=[.!?])[\"')\]]*\s+(?=[\"'(]?[A-Z0-9])")
 
 
 def signs_off(text):
     """Whether a sign-off line actually says goodbye."""
     return bool(SIGN_OFF.search(text))
+
+
+def drop_early_sign_off(text):
+    """Before the sign-off, drop sentences that end the show. A question survives, since it hands the turn to someone,
+    and a line that is nothing but a sign-off is kept as it is."""
+    parts = [p.strip() for p in SENTENCES.split(text) if p.strip()]
+    kept = [p for p in parts if not ENDS_SHOW.search(p) or p.rstrip("\"')]").endswith("?")]
+    return " ".join(kept) if kept else text
 
 
 def finish_close(text, names):
@@ -877,7 +908,7 @@ def generate_turn(req):
         {"role": "system", "content": system_prompt(me, cast, req.get("show", "the show"), req.get("topic", ""), spec, phase,
                                                     req.get("cutIn"), user,
                                                     turn_cues(me, cast, transcript, user, req.get("intent"), _agenda(req), phase, user_here, event),
-                                                    floor, pick_next, user_here)},
+                                                    floor, pick_next, user_here, _facts(req))},
         {"role": "user", "content": user_prompt(me, transcript, phase)},
     ]
     stop = [f"\n{n}:" for n in others + ([user] if user else [])][:4]  # four is the most every provider accepts
@@ -890,11 +921,13 @@ def generate_turn(req):
     # The opening and the sign-off get one extra sentence for the welcome or the thank-yous.
     everyone = cast + ([{"name": user}] if user else [])
     text = limit_sentences(clean(raw, me, everyone), spec[2] + (1 if phase in ("open", "reopen", "close") else 0), keep_end=phase == "close")
+    if phase in ("open", "reopen", "normal"):
+        text = drop_early_sign_off(text)
     # Handing over to you: the line ends by asking you by name, or the model tags it (clean() strips the tag). The tag
     # only counts when the line talks to you (names you, or answers you), since models also tag questions meant for another guest.
     talks_to_you = bool(user) and (re.search(rf"\b{re.escape(user)}\b", text, re.I) is not None
                                    or bool(transcript) and transcript[-1]["name"] == user)
-    to_you = bool(user) and user_here and phase != "close" and (asks_user(text, user)
+    to_you = bool(user) and user_here and phase != "close" and (asks_user(text, user, others)
                                                   or bool(talks_to_you and re.search(r"\[\s*handover\s*\]", raw, re.I)))
     if phase == "close" and text:
         text = finish_close(text, others)
@@ -932,10 +965,20 @@ def take_next(raw, me, cast, user=None):
     return raw, pick
 
 
-def asks_user(text, user):
-    """True when the line ends by asking you something by name, as in "Aron, what do you think?"."""
-    last = re.split(r"(?<=[.!?])\s+", text.strip())[-1]
-    return last.endswith("?") and re.search(rf"\b{re.escape(user)}\b", last, re.I) is not None
+def asks_user(text, user, others=()):
+    """True when the line ends with a question meant for you: "Aron, what do you think?", or one where your name came
+    earlier, as in "Sorry, Aron, I said that too fast. Plain version: what do you think?". A closing question that names
+    another guest is theirs, and so is one where you were only talked about ("Aron is right. What do you think?")."""
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s]
+    if not sentences or not sentences[-1].endswith("?"):
+        return False
+    name = re.escape(user)
+    if re.search(rf"\b{name}\b", sentences[-1], re.I):
+        return True
+    if any(re.search(rf"\b{re.escape(o)}\b", sentences[-1], re.I) for o in others):
+        return False
+    # Spoken to, not about: the name sits next to a comma or a sentence break.
+    return re.search(rf"(?:^|[.!?,]\s*){name}\s*[,!?]|,\s*{name}\b", text, re.I) is not None
 
 
 # ---- the director --------------------------------------------------------------------
@@ -955,7 +998,8 @@ def direct(req):
     by_boss = bool(user) and here and last == user  # your word is in play
     if FAKE:
         pick = random.choice(candidates)
-        floor = pick.get("longest", 0) if random.random() < 0.3 else 0
+        early = sum(1 for t in transcript if t["name"] != user) < 4
+        floor = pick.get("longest", 0) if random.random() < 0.3 and (by_boss or not early) else 0
         return {"next": pick["name"], "intent": "Respond directly to the last point.", "cutIn": random.random() < 0.2, "floor": floor}
 
     counts = {c["name"]: sum(1 for t in transcript if t["name"] == c["name"]) for c in cast}
@@ -993,13 +1037,17 @@ def direct(req):
         "floor is 0 for a normal reply. Set it to a number of seconds only when (a) the person running the show asked someone to speak at length "
         "(use the time they asked for, at most %d), or (b) the next speaker is marked as able to hold the floor and the point on the "
         "table needs a proper explanation or a story rather than a quick reply (choose between 60 and their maximum). Case (b) is rare: "
-        "never twice in a row." % FLOOR_MAX,
+        "never twice in a row, and never in the first few lines of the episode." % FLOOR_MAX,
         f'Reply with JSON only: {{"next": "<one of: {", ".join(c["name"] for c in candidates)}>", "intent": "<one short sentence>", "cutIn": false, "floor": 0}}',
     ])
     agenda = _agenda(req)
     if agenda and agenda["title"]:
         system += (f'\nThe show is in part {agenda["part"]} of {agenda["parts"]} of its run of show, "{agenda["title"]}", which should cover: '
                    + "; ".join(agenda["points"]) + ". Intents stay inside this part unless the person running the show asked for something else.")
+    facts = _facts(req)
+    if facts:
+        system += (f"\nSettled on this episode by {user or 'the person running the show'}, and true: " + "; ".join(facts)
+                   + ". No intent may contradict these.")
     convo = "\n".join(f'{t["name"]}: {t["text"]}' for t in transcript[-16:]) or "(nothing yet)"
     messages = [{"role": "system", "content": system},
                 {"role": "user", "content": f"Conversation so far:\n{convo}\n\nWho speaks next? JSON only."}]
@@ -1020,6 +1068,8 @@ def direct(req):
     except (TypeError, ValueError):
         floor = 0
     cap = FLOOR_MAX if by_boss else int(pick.get("longest") or 0)
+    if not by_boss and sum(1 for t in transcript if t["name"] != user) < 4:
+        cap = 0  # the opening exchange is quick lines: nobody holds the floor before the conversation has started
     floor = min(floor, cap)
     if floor < 30:
         floor = 0
@@ -1056,7 +1106,7 @@ def steer(req):
     if not said:
         return {"action": "none", "note": ""}
     if FAKE:
-        return {"action": fake_steer(said), "note": said[-1]}
+        return {"action": fake_steer(said), "note": said[-1], "facts": fake_facts(said)}
     agenda = _agenda(req)
     where = ""
     if agenda and agenda["title"]:
@@ -1079,18 +1129,25 @@ def steer(req):
         where,
         f"If {user} said several things, the latest instruction wins. Their words come from speech recognition, so expect "
         "typos and misheard names.",
-        'Reply with JSON only: {"action": "<none|quiet|stop|end|next|replan>", "note": "<for replan: what they want, in a few words>"}',
+        f"Separately, facts: when {user} corrects something said on the show or states a fact (what a song, word or name means, "
+        "who someone is, something about themselves), write each one as a short statement that makes sense on its own, using the "
+        "conversation for names, such as \"Msay by Abraham Afewerki means 'with me': it is a love song\". A bare \"no\" or an "
+        "opinion is not a fact. Usually there are none.",
+        'Reply with JSON only: {"action": "<none|quiet|stop|end|next|replan>", "note": "<for replan: what they want, in a few words>", '
+        '"facts": []}',
     ])
     lines = "\n".join(f"- {x}" for x in said)
     messages = [{"role": "system", "content": system},
                 {"role": "user", "content": f"Recent conversation:\n{convo or '(nothing yet)'}\n\nWhat {user} just said, oldest first:\n{lines}\n\nJSON only."}]
-    data, _, name = chat(req, messages, 80, 0, timeout=15)
+    data, _, name = chat(req, messages, 200, 0, timeout=15)
     raw = re.sub(r"(?s)<think>.*?(</think>|$)", "", data["choices"][0]["message"].get("content") or "")
     m = re.search(r"\{.*\}", raw, re.S)
     out = json.loads(m.group(0)) if m else {}
     action = str(out.get("action") or "").strip().lower()
+    facts = out.get("facts") if isinstance(out.get("facts"), list) else []
     usage = data.get("usage", {})
     return {"action": action if action in STEER_ACTIONS else "none", "note": str(out.get("note") or "").strip()[:300],
+            "facts": [str(f).strip()[:200] for f in facts[:3] if str(f).strip()],
             "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
 
 
@@ -1196,6 +1253,12 @@ def plan_episode(req):
             "usage": {"in": usage.get("prompt_tokens", 0), "out": usage.get("completion_tokens", 0)}}
 
 
+def _facts(req):
+    """Facts you settled on air (a translation, who someone is), newest last. Checked item by item."""
+    f = req.get("facts")
+    return [str(x).strip()[:200] for x in f[-8:] if str(x).strip()] if isinstance(f, list) else []
+
+
 def _agenda(req):
     """Where the show is: the clock always, and the part of the plan when there is one. Checked field by field."""
     a = req.get("agenda")
@@ -1260,7 +1323,8 @@ def agenda_cues(me, agenda, phase, user=None, user_spoke=False):
         cues.append(f'This part\'s time is up. Close it in one sentence and move the show to the next part: "{agenda["next"]}". '
                     "Bring in a guest on it by name.")
     elif _winding_down(agenda):
-        cues.append("The episode is nearly over: start bringing the conversation to a close, with no new topics.")
+        cues.append("The episode is nearly over: start bringing the conversation to a close, with no new topics. Do not say "
+                    "goodbye yet: the sign-off comes in its own line.")
     elif agenda["wrap"]:
         cues.append("This part's time is up. Close it in one sentence and steer towards the last word on the topic.")
     return cues
@@ -1425,6 +1489,11 @@ def invite(req):
     if need_host:
         made[0]["role"] = "host"
     return {"characters": made, "usage": {"in": raw.get("usage", {}).get("prompt_tokens", 0), "out": raw.get("usage", {}).get("completion_tokens", 0)}}
+
+
+def fake_facts(said):
+    """Lines that correct or state something, kept word for word, for testing without a key."""
+    return [s for s in said if re.search(r"\b(means|is about|actually|i am|i'm)\b", s, re.I)][:3]
 
 
 def fake_floor(me, words):

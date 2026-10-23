@@ -1198,6 +1198,7 @@ function parseFloor(text, people) {
 function grantFloor(who, secs, by) {
   // Never into the last half minute, which is the sign-off's, and the director keeps short episodes to short turns.
   if (by === "director" && (state.settings.minutes || 10) < 5) return false;
+  if (by === "director" && aiCount() < 4) return false; // the opening exchange is quick lines, not a speech
   secs = Math.min(FLOOR_MAX, secs, timeLeft() - 30);
   if (secs < (by === "director" ? 45 : 30)) return false;
   show.floor = { name: who.name, secs, used: 0, segs: 0, by };
@@ -1263,7 +1264,7 @@ async function chooseNext(phase, ep) {
     try {
       const res = await post("/api/podcast/next", {
         characters: people, show: state.show, topic: state.topic, user: you().name, userPresent: show.youHere,
-        transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })), agenda: agendaNow() || undefined,
+        transcript: show.turns.map((t) => ({ name: t.name, text: t.llmText ?? t.text })), agenda: agendaNow() || undefined, facts: show.record?.facts,
         provider: state.settings.provider, llmModel: state.settings.llmModel, session: show.session,
       }, AbortSignal.timeout(bossed ? 20000 : 10000));
       const d = await res.json();
@@ -1441,7 +1442,7 @@ async function loop(ep) {
       const data = await askAI({
         characters: cast(), show: state.show, topic: state.topic, speaker: speaker.name, phase,
         transcript: show.turns.map((t) => ({ name: t.name, text: t === prev && cut ? cut.text : t.llmText ?? t.text })),
-        cutIn: cut ? prev.name : null, user: you().name, userPresent: show.youHere, event: event || undefined, intent, floor: floor || undefined,
+        cutIn: cut ? prev.name : null, user: you().name, userPresent: show.youHere, event: event || undefined, intent, floor: floor || undefined, facts: show.record?.facts,
         pickNext: s.turnMode === "smart" || undefined, agenda: agenda || undefined, length: s.length, temperature: s.temperature, provider: s.provider, llmModel: s.llmModel, session: show.session,
       }, ep);
       if (!alive(ep)) return;
@@ -1508,7 +1509,14 @@ async function steerYou(ep) {
   if (!alive(ep)) return none; // you said more meanwhile: the next read takes all of it
   for (const t of fresh) t.steered = true;
   if (d.usage) { show.usage.in += d.usage.in; show.usage.out += d.usage.out; }
+  if (fresh.every((t) => t.angle)) d.action = "none";
   if (d.action && d.action !== "none") console.info(`[podroom] your instruction: ${d.action}${d.note ? ` (${d.note})` : ""}`);
+  // Facts you corrected or stated stay settled for the rest of the episode, saved with it so a reopen keeps them.
+  if (Array.isArray(d.facts) && d.facts.length && show.record) {
+    show.record.facts = [...(show.record.facts || []), ...d.facts].slice(-8);
+    console.info(`[podroom] settled: ${d.facts.join(" | ")}`);
+    saveRecord();
+  }
   return { action: d.action || "none", note: d.note || "", said: fresh.at(-1).text };
 }
 const theHost = () => cast().find((c) => c.role === "host") || cast()[0];
@@ -1676,7 +1684,7 @@ function youSay(text) {
   const turn = { name: you().name, who: { ...you() }, text, human: true, pcm: [], sources: [], reactions: [], gain: null,
     start: now, end: now, done: true, abort: new AbortController(), el: null, cutsPrev: null };
   show.turns.push(turn);
-  turn.steered = answeringAngle; // your answer to the host's opening question already replans
+  turn.angle = answeringAngle; // your answer to the host's opening question already replans: it is read for facts only
   turn.entry = logEntry({ type: "you", name: turn.name, text });
   renderTurn(turn);
   show.epoch++;
