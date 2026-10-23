@@ -45,7 +45,6 @@
   .pc .sub { font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pc .info { flex: 1; min-width: 0; }
   .pc .persona { font-size: 13px; line-height: 1.5; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
-  .pc .meta { font-size: 11px; color: var(--faint); }
   .pc .badges { display: flex; gap: 6px; flex-wrap: wrap; }
   .badge { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
     color: var(--accent); background: var(--accent-soft); }
@@ -84,6 +83,14 @@
   .dialog .where { font-size: 12px; color: var(--faint); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .voice-row { display: flex; gap: 8px; }
+  .picks { gap: 4px; }
+  .pick { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 12px; cursor: pointer; }
+  .pick:hover { background: rgba(255, 255, 255, .04); }
+  .pick input { width: 16px; height: 16px; flex: none; accent-color: var(--accent); }
+  .pick .avatar { width: 32px; height: 32px; font-size: 13px; }
+  .pick .t { min-width: 0; display: flex; flex-direction: column; }
+  .pick b { font-size: 14px; font-weight: 500; }
+  .pick small { font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .voice-row select { flex: 1; }
 
   @media (max-width: 560px) {
@@ -94,7 +101,7 @@
 </style>
 </head>
 <body>
-<header class="page-head"><h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2A4.5 4.5 0 0 1 21 18.5"/></svg>Casts</h1><span class="sub">Everyone who has been on the show, your characters and saved lineups</span></header>
+<header class="page-head"><h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2A4.5 4.5 0 0 1 21 18.5"/></svg>Casts</h1><span class="sub">Who is on the show, your characters and saved lineups</span></header>
 <script src="/shell.js"></script>
 <div class="wrap">
 
@@ -121,16 +128,10 @@
   </section>
 
   <section class="card block" data-kind="mine">
-    <div class="bh"><h2>My characters</h2><span class="n" id="nMine">0</span>
+    <div class="bh"><h2>My characters</h2><span class="n" id="nMine">0</span><span class="sp"></span>
+      <button class="btn" id="importPast" hidden>Import from past episodes</button>
       <span class="help">Your own library. They also appear under “Add character” in the Studio, and the AI casting director can reuse them.</span></div>
     <div class="cards" id="mineCards"></div>
-  </section>
-
-  <section class="card block" data-kind="past">
-    <div class="bh"><h2>From past episodes</h2><span class="n" id="nPast">0</span><span class="sp"></span>
-      <button class="btn ghost" id="toggleHidden" hidden></button>
-      <span class="help">Everyone who has been on an episode, as they were in their latest one. Save the ones worth keeping.</span></div>
-    <div class="cards" id="pastCards"></div>
   </section>
 
   <section class="card block" data-kind="builtin">
@@ -161,7 +162,8 @@ const store = {
 };
 
 let state = null, status = null, catalog = [], past = [];
-let filter = store.get("filter", "all"), query = "", showHidden = false;
+let filter = store.get("filter", "all"), query = "";
+if (!["all", "show", "casts", "mine", "builtin"].includes(filter)) filter = "all"; // "Past" was a filter once
 
 // ===== state & saving ======================================================================
 // The Studio and Settings pages keep the same state file, so this page saves straight away and reloads it when you come back.
@@ -209,13 +211,12 @@ async function load() {
   state.characters = (state.characters || []).map(normalize);
   state.myTemplates = (state.myTemplates || []).map(normalize);
   state.casts = (state.casts || []).filter((l) => l && Array.isArray(l.characters));
-  state.hiddenPast = state.hiddenPast || [];
 }
 
 async function init() {
   const [voices] = await Promise.all([fetch("/api/voices").then((r) => r.json()).catch(() => []), load()]);
   catalog = voices.filter((v) => v.language === "en");
-  seg($("filterSeg"), [["all", "All"], ["show", "On the show"], ["casts", "Casts"], ["mine", "Mine"], ["past", "Past"], ["builtin", "Built-in"]], filter, (v) => { filter = v; store.set("filter", v); render(); });
+  seg($("filterSeg"), [["all", "All"], ["show", "On the show"], ["casts", "Casts"], ["mine", "Mine"], ["builtin", "Built-in"]], filter, (v) => { filter = v; store.set("filter", v); render(); });
   render();
 }
 
@@ -240,9 +241,7 @@ function card(c, kind, idx) {
   const bits = [attitudeLabel(c.attitude), c.voice || "Default voice", c.speed ? speedLabel(c.speed) : ""].filter(Boolean);
   const badges = [];
   if (kind !== "show" && onShow(c.name)) badges.push("On the show");
-  if ((kind === "past" || kind === "builtin") && inMine(c.name)) badges.push("Saved");
-  const meta = kind === "past"
-    ? `Last on ${esc(c.lastShow || "an episode")}${c.lastAt ? " · " + esc(c.lastAt.slice(0, 10)) : ""} · ${c.episodes} episode${c.episodes === 1 ? "" : "s"}` : "";
+  if (kind === "builtin" && inMine(c.name)) badges.push("Saved");
   el.innerHTML = `
     <div class="top">${face(c.name, color)}
       <div class="info"><div class="nm"><span class="t">${esc(c.name || "Unnamed")}</span><span class="role">${cap(c.role)}</span></div>
@@ -250,7 +249,6 @@ function card(c, kind, idx) {
       <button class="btn ghost icon play" title="Hear this voice">${ICON_PLAY}</button>
     </div>
     ${c.persona ? `<p class="persona" title="${esc(c.persona)}">${esc(c.persona)}</p>` : ""}
-    ${meta ? `<div class="meta">${meta}</div>` : ""}
     ${badges.length ? `<div class="badges">${badges.map((b) => `<span class="badge">${b}</span>`).join("")}</div>` : ""}
     <div class="acts"></div>`;
   el.querySelector(".play").onclick = (e) => previewVoice(c, e.currentTarget);
@@ -266,14 +264,6 @@ function card(c, kind, idx) {
     if (!onShow(c.name)) act("Add to show", () => addToShow(c));
     act("Duplicate", () => { state.myTemplates.splice(idx + 1, 0, copyOf({ ...c, name: uniqueName(c.name + " copy", state.myTemplates) }, "my")); save(); render(); }, "ghost");
     act(ICON_TRASH, () => { if (confirm(`Delete ${c.name} from your characters? Episodes they were in are kept.`)) { state.myTemplates.splice(idx, 1); save(); render(); setStatus(`Deleted ${c.name}.`); } }, "ghost icon danger");
-  } else if (kind === "past") {
-    if (!onShow(c.name)) act("Add to show", () => addToShow(c));
-    if (!inMine(c.name)) act("Save to mine", () => saveToMine(c));
-    const hidden = state.hiddenPast.includes(lower(c.name));
-    act(hidden ? "Unhide" : "Hide", () => {
-      state.hiddenPast = hidden ? state.hiddenPast.filter((n) => n !== lower(c.name)) : [...state.hiddenPast, lower(c.name)];
-      save(); render();
-    }, "ghost");
   } else if (kind === "builtin") {
     if (!onShow(c.name)) act("Add to show", () => addToShow(c));
     act(inMine(c.name) ? "Copy again" : "Copy to mine", () => saveToMine(c));
@@ -293,13 +283,8 @@ function render() {
   for (const s of document.querySelectorAll("section.block")) s.hidden = filter !== "all" && s.dataset.kind !== filter;
   const idx = (arr) => arr.map((c, i) => ({ c, i }));
   $("nShow").textContent = fill("showCards", idx(state.characters), "show", "Nobody yet. Add someone from below.");
-  $("nMine").textContent = fill("mineCards", idx(state.myTemplates), "mine", "No saved characters yet. Use “Save to mine” on anyone, or make a new one.");
-  const hidden = new Set(state.hiddenPast);
-  const pastList = past.filter((c) => showHidden || !hidden.has(lower(c.name))).map((c) => ({ c: { ...normalize(c), episodes: c.episodes, lastShow: c.lastShow, lastAt: c.lastAt }, i: -1 }));
-  $("nPast").textContent = fill("pastCards", pastList, "past", "No episodes yet.");
-  const nHidden = past.filter((c) => hidden.has(lower(c.name))).length;
-  $("toggleHidden").hidden = !nHidden;
-  $("toggleHidden").textContent = showHidden ? "Hide hidden" : `Show hidden (${nHidden})`;
+  $("nMine").textContent = fill("mineCards", idx(state.myTemplates), "mine", "No saved characters yet. Use “Save to mine” on anyone, import from past episodes, or make a new one.");
+  $("importPast").hidden = !notImported().length;
   $("nBuiltin").textContent = fill("builtinCards", idx(status.characterTemplates.map(normalize)), "builtin", "");
   renderLineups();
 }
@@ -398,7 +383,40 @@ function askName(title, value, action) {
     input.focus(); input.select();
   });
 }
-$("toggleHidden").onclick = () => { showHidden = !showHidden; render(); };
+
+// ===== import from past episodes ====================================================================
+// Nobody from a past episode joins your characters by themselves: you pick who to bring in, as they were
+// in their latest episode.
+const notImported = () => past.filter((c) => !inMine(c.name));
+$("importPast").onclick = () => {
+  const list = notImported();
+  const ov = $("editor");
+  ov.innerHTML = `
+    <div class="dialog glass" role="dialog" aria-modal="true" aria-label="Import from past episodes" style="--c:var(--accent);width:min(520px,100%)">
+      <div class="dh"><div style="font-size:17px;font-weight:600">Import from past episodes</div></div>
+      <div class="db picks">${list.map((c, i) => `
+        <label class="pick"><input type="checkbox" data-i="${i}">${face(c.name, colorFor(c.name))}
+          <span class="t"><b>${esc(c.name)}</b><small>${cap(c.role)} · last on ${esc(c.lastShow || "an episode")} · ${c.episodes} episode${c.episodes === 1 ? "" : "s"}</small></span></label>`).join("")}
+      </div>
+      <div class="df"><button class="btn ghost all">Select all</button><span class="sp"></span><button class="btn ghost cancel">Cancel</button><button class="btn primary ok" disabled>Import</button></div>
+    </div>`;
+  const boxes = [...ov.querySelectorAll(".pick input")];
+  const picked = () => boxes.filter((b) => b.checked);
+  const update = () => { const n = picked().length; ov.querySelector(".ok").disabled = !n; ov.querySelector(".ok").textContent = n ? `Import ${n}` : "Import"; };
+  const close = () => { ov.hidden = true; ov.innerHTML = ""; ov.onclick = ov.onkeydown = null; };
+  boxes.forEach((b) => (b.onchange = update));
+  ov.querySelector(".all").onclick = () => { const on = picked().length < boxes.length; boxes.forEach((b) => (b.checked = on)); update(); };
+  ov.querySelector(".cancel").onclick = close;
+  ov.querySelector(".ok").onclick = () => {
+    const chosen = picked().map((b) => list[+b.dataset.i]);
+    for (const { episodes, lastShow, lastTopic, lastAt, ...c } of chosen) state.myTemplates.push(copyOf(c, "my"));
+    close(); save(); render();
+    setStatus(`Imported ${chosen.map((c) => c.name).join(", ")}.`);
+  };
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+  ov.onkeydown = (e) => { if (e.key === "Escape") close(); };
+  ov.hidden = false;
+};
 $("search").oninput = (e) => { query = lower(e.target.value); render(); };
 
 // ===== editor ===================================================================================

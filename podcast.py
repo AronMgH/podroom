@@ -189,7 +189,6 @@ DEFAULT_STATE = {
     "characters": [dict(_T["t-host"], id="c1"), dict(_T["t-engineer"], id="c2")],
     "myTemplates": [],
     "casts": [],        # saved lineups from the Casts page: {"id", "name", "characters": [...]}
-    "hiddenPast": [],   # names hidden from "From past episodes" on the Casts page
     # You: the real person running the show, who joins in from the studio box (typed or spoken, never voiced).
     "you": {"name": ""},
     "settings": {
