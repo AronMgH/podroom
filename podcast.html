@@ -219,7 +219,10 @@
   .bubble .who .tagx { font-weight: 500; color: var(--faint); }
   .bubble .txt { font-size: 15px; line-height: 1.6; color: rgba(243, 243, 239, .92); }
   .bubble .prog { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--c); box-shadow: 0 0 8px var(--c); }
-  .turn.queued { opacity: .42; }
+  .turn.queued:not(.thinking) { display: none; } /* a line shows in the thread once its speaker starts saying it */
+  .bubble .txt .w:not(.on) { display: none; }    /* and is written out word by word as it is spoken */
+  .bubble .txt .w.on { animation: word-in .3s ease; }
+  @keyframes word-in { from { opacity: 0; } }
   .turn.speaking .bubble {
     border-color: color-mix(in srgb, var(--c) 55%, transparent);
     background: color-mix(in srgb, var(--c) 8%, rgba(255, 255, 255, .05));
@@ -1881,7 +1884,10 @@ function endShow(msg, err) {
   finishMic();
   if (show.paused) { show.paused = false; ctx?.resume(); }
   hideThinking();
-  for (const t of show.turns) t.el?.classList.remove("speaking", "queued");
+  for (const t of show.turns) {
+    t.el?.classList.remove("speaking", "queued");
+    t.wordEls?.forEach((w) => w.classList.add("on")); t.wordEls = null; // a stopped line shows whole
+  }
   const cost = show.usage.in || show.usage.out ? ` · ${show.usage.in + show.usage.out} tokens` : "";
   setStatus(msg + cost, err);
   setControls();
@@ -1970,7 +1976,10 @@ function showThinking(speaker) {
 }
 function hideThinking() { show.thinkingEl?.remove(); show.thinkingEl = null; show.thinkingName = null; }
 function renderTurn(turn) {
-  turn.el = bubble(turn.name, esc(turn.text), "queued");
+  // A voiced line is written out word by word in step with its audio (see tick); yours and restored ones show whole.
+  const words = turn.human || turn.restored ? null : turn.text.split(/\s+/).filter(Boolean);
+  turn.el = bubble(turn.name, words ? words.map((w) => `<span class="w">${esc(w)}</span>`).join(" ") : esc(turn.text), "queued");
+  if (words) { turn.wordEls = [...turn.el.querySelectorAll(".txt .w")]; turn.lit = 0; }
   if (show.thinkingEl) $("transcript").insertBefore(turn.el, show.thinkingEl); else $("transcript").appendChild(turn.el);
   scrollDown();
 }
@@ -2132,6 +2141,23 @@ function drawOrb(color, speaking, thinking) {
   og.fillStyle = sp; og.beginPath(); og.arc(cx, cy, R, 0, Math.PI * 2); og.fill();
 }
 
+// Shows as many of a line's words as have been said, timed like the orb's captions: while a line is still being
+// voiced only part of its audio exists, so its length is estimated from how fast this character talks.
+function revealWords(t, now, started) {
+  const n = t.wordEls.length;
+  let lit = n;
+  if (show.running && !(t.done && started && now >= t.end)) {
+    let dur = t.end - t.start;
+    if (!t.done) dur = Math.max(dur, n / wpsOf(t.name));
+    lit = !started ? 0 : dur > 0 ? Math.ceil(Math.min(t.done ? 1 : 0.97, (now - t.start) / dur) * n) : 0;
+  }
+  if (lit <= t.lit) return;
+  for (let i = t.lit; i < lit; i++) t.wordEls[i].classList.add("on");
+  t.lit = lit;
+  if (lit >= n) t.wordEls = null;
+  scrollDown();
+}
+
 // Highlights the line being heard and keeps the clock, driven by the audio clock so Pause just works.
 function tick() {
   if (ctx && show.turns.length) {
@@ -2140,9 +2166,11 @@ function tick() {
       if (!t.el) return;
       const started = t.start !== null && now >= t.start;
       const playing = started && (now < t.end || !t.done);
-      t.el.classList.toggle("queued", !started && show.running);
+      if (t.el.classList.contains("queued") && (started || !show.running)) { t.el.classList.remove("queued"); scrollDown(); }
+      else if (!started && show.running) t.el.classList.add("queued");
       t.el.classList.toggle("speaking", show.running && playing);
-      if (t.cutAt && now >= t.cutAt && !t.cutShown) { t.el.querySelector(".txt").textContent = t.cutText; t.cutShown = true; }
+      if (t.cutAt && now >= t.cutAt && !t.cutShown) { t.el.querySelector(".txt").textContent = t.cutText; t.cutShown = true; t.wordEls = null; }
+      if (t.wordEls) revealWords(t, now, started);
       const p = t.el.querySelector(".prog");
       if (p) p.style.width = started && t.end > t.start ? `${Math.min(100, ((now - t.start) / (t.end - t.start)) * 100)}%` : "0";
     });
