@@ -41,6 +41,13 @@
         <input type="text" id="customModel" list="modelList" maxlength="120" spellcheck="false" autocomplete="off" placeholder="Search, or paste an ID such as anthropic/claude-haiku-5.5">
         <datalist id="modelList"></datalist>
       </label>
+      <div class="opt" id="connectRow" hidden>
+        <div class="row" style="align-items:center;flex-direction:row">
+          <button class="btn primary" id="connect" style="flex:none">Connect OpenRouter</button>
+          <span class="help" id="connectState"></span>
+        </div>
+        <span class="help">Sign in or sign up on openrouter.ai and Podroom gets a key by itself. It starts you on the fastest free model: 50 calls a day on a new account, enough for about one 5-minute episode.</span>
+      </div>
       <label class="f"><span><span id="keyLabel">API key</span> <span class="help" id="keyState"></span></span>
         <div class="row" style="align-items:center;flex-direction:row">
           <input type="password" id="apiKey" autocomplete="off" spellcheck="false">
@@ -126,7 +133,7 @@ async function init() {
   if (!ttsModels.some((m) => m.id === state.settings.ttsModel)) state.settings.ttsModel = ttsModels[0]?.id || "";
   renderSettings(); renderKey();
   // Sent here from the Studio to add a key: put the cursor in the key field.
-  if (location.hash === "#ai" && !keyOk()) $("apiKey").focus();
+  if (location.hash === "#ai" && !keyOk()) (prov().id === "openrouter" ? $("connect") : $("apiKey")).focus();
 }
 
 // ===== small widgets ===========================================================================
@@ -209,7 +216,11 @@ const keyOk = () => !!prov()?.keyConfigured;
 
 function renderKey() {
   const p = prov(), ok = keyOk();
-  $("keyLabel").textContent = `${p.label} API key`;
+  // OpenRouter can hand over a key itself after you sign in; pasting one stays possible below.
+  $("connectRow").hidden = p.id !== "openrouter" || status.fake;
+  $("connect").textContent = ok ? "Reconnect OpenRouter" : "Connect OpenRouter";
+  $("connect").classList.toggle("primary", !ok);
+  $("keyLabel").textContent = p.id === "openrouter" ? "Or paste an OpenRouter API key" : `${p.label} API key`;
   $("keyState").innerHTML = status.fake ? '<span class="keyok">Test mode: canned lines, no API calls</span>' : ok ? '<span class="keyok">✓ Key saved</span>' : "Not set";
   $("removeKey").hidden = !ok || status.fake;
   $("apiKey").placeholder = ok ? "Paste a new key to replace it" : p.keyHint;
@@ -231,6 +242,20 @@ $("saveKey").onclick = async () => {
 };
 $("apiKey").addEventListener("keydown", (e) => { if (e.key === "Enter") $("saveKey").click(); });
 $("removeKey").onclick = () => setKey("");
+
+// Connecting is the sidebar's (shell.js): it opens openrouter.ai in your browser and says when the key is saved.
+$("connect").onclick = () => {
+  flush(); // the provider choice first, before the server sets the free model
+  podroomShell.connect();
+  $("connectState").textContent = "Finish signing in on openrouter.ai…";
+};
+window.addEventListener("podroom:connected", (e) => {
+  $("connectState").textContent = "";
+  if (!e.detail) return;
+  state = e.detail.state; status = e.detail.status;
+  renderSettings(); renderKey();
+  if (keyOk()) setStatus(`Connected to OpenRouter${state.settings.llmModel.endsWith(":free") ? ", on a free model" : ""}. Head to the Studio and press Start.`);
+});
 
 // ===== speech to text ============================================================================
 function renderStt(d) {

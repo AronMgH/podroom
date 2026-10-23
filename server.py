@@ -8,6 +8,7 @@ a Phonon checkpoint (config.json plus model.*.gguf or model.safetensors), plus P
 which is not gated and downloads on first use.
 """
 import glob
+import html
 import json
 import os
 import sys
@@ -253,6 +254,24 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(length) or b"{}")
 
+    def openrouter_callback(self, params):
+        """Where OpenRouter sends the browser after sign-in. Shows a page to close, since it opens outside the app."""
+        code, state = params.get("code", [""])[0], params.get("state", [""])[0]
+        if not code:
+            title, text = "Not connected", "OpenRouter did not connect. Go back to Podroom and try again whenever you like."
+        else:
+            try:
+                model = podcast.openrouter_finish(code, state)
+                free = " It is set to the fastest free model, Nemotron 3.5 Lightning. A new account gets 50 free calls a day: about one 5-minute episode." if model.endswith(":free") else ""
+                title, text = "Connected", f"Podroom is connected to your OpenRouter account.{free} You can close this tab and go back to Podroom."
+            except (ValueError, RuntimeError) as e:
+                title, text = "Not connected", str(e)
+        page = (f'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+                f'<title>{title} · Podroom</title><link rel="stylesheet" href="/theme.css">'
+                f'<main class="card" style="max-width:460px;margin:12vh auto;padding:24px 26px;line-height:1.55">'
+                f'<h1 style="margin:0 0 8px;font-size:20px">{title}</h1><p style="margin:0;color:var(--muted)">{html.escape(text)}</p></main>')
+        self.send_body(200, page.encode(), "text/html; charset=utf-8")
+
     def read_request(self):
         data = self.read_json()
         text = str(data.get("text", "")).strip()[:MAX_CHARS]
@@ -304,6 +323,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"state": podcast.load_state(), "status": podcast.status()})
         elif self.path == "/api/stt":
             self.send_json(200, {"ready": stt_files() is not None, **stt_download})
+        elif page == "/openrouter/connect":
+            # Opened as http://localhost:… so the desktop app hands it to your own browser, and sent straight on to
+            # openrouter.ai. localhost, not 127.0.0.1: it is the loopback name OpenRouter accepts on any port.
+            self.send_response(302)
+            self.send_header("Location", podcast.openrouter_connect_url(f"http://localhost:{PORT}/openrouter/callback"))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif page == "/openrouter/callback":
+            self.openrouter_callback(urllib.parse.parse_qs(query))
         else:
             self.send_json(404, {"error": "not found"})
 

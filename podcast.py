@@ -4,13 +4,17 @@ Each turn is one call to the chat API with the speaker's own persona as the
 system prompt, so every character is a separate agent that only sees the
 transcript. The browser decides who speaks next and plays the audio.
 """
+import base64
+import hashlib
 import json
 import os
 import random
 import re
+import secrets
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -67,6 +71,8 @@ PROVIDERS = {
         "env": "OPENROUTER_API_KEY",
         "keyHint": "sk-or-…",
         "models": [
+            ("nvidia/nemotron-3.5-lightning:free", "Nemotron 3.5 Lightning (free, fastest)"),
+            ("nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra (free, slower)"),
             ("deepseek/deepseek-v4.1-flash", "DeepSeek V4.1 Flash (fast, cheap)"),
             ("anthropic/claude-haiku-5.5", "Claude Haiku 5.5 (fast)"),
             ("qwen/qwen3.8-flash", "Qwen3.8 Flash (fast)"),
@@ -83,6 +89,12 @@ PROVIDERS = {
     },
 }
 PROVIDERS = {pid: PROVIDERS[pid] for pid in ("openrouter", "deepseek", "opencode-go")}  # OpenRouter first: one key, every model
+# What a newly connected OpenRouter account starts on: the fastest free model that writes good lines (about 1.5 s a
+# short line in October 2026; Gemma's free tier refused every call). When its provider is busy, OpenRouter falls
+# back to FREE_BACKUP. Free models allow 50 calls a day until the account has bought 10 credits, then 1000; an
+# episode makes about one call per line, so 5 minutes takes about 28.
+FREE_MODEL = "nvidia/nemotron-3.5-lightning:free"
+FREE_BACKUP = "nvidia/nemotron-3-ultra-550b-a55b:free"
 MODEL_ID = re.compile(r"^[~A-Za-z0-9._\-/:]{1,120}$")
 # (what the prompt asks for, max tokens, most sentences kept). Models drift long when only
 # asked nicely, so replies are also trimmed to the sentence limit after they come back.
@@ -185,13 +197,13 @@ DEFAULT_STATE = {
         "length": "short",
         "turnMode": "smart",
         "provider": "openrouter",
-        "llmModel": "deepseek/deepseek-v4.1-flash",
+        "llmModel": FREE_MODEL,
         "temperature": 1.0,
         "gap": 0.5,
         "interrupts": 1,  # 0 off, 1 some, 2 lots
         "reactions": 1,   # listeners say "mm-hm" or "yeah" during other lines
         "rpm": 10,        # most AI calls per minute; providers throttle bursts
-        "minutes": 10,    # episode length; the host wraps up when the audio gets there
+        "minutes": 5,     # episode length; the host wraps up when the audio gets there. 5 fits the free model's day
         "ttsModel": "",
     },
 }
@@ -377,6 +389,59 @@ def delete_key(provider):
             pass
 
 
+# ---- Connect OpenRouter ------------------------------------------------------------
+# OpenRouter's OAuth PKCE flow: the user signs in on openrouter.ai, approves Podroom, and is sent back to this
+# server with a code that we trade for a key on their account. Nobody copies or pastes a key.
+
+_connects = {}  # state -> (started at, code verifier)
+connected_at = 0  # when the last sign-in saved a key, so the Settings page can tell it finished
+
+
+def openrouter_connect_url(callback):
+    """Where to send the user to sign in. The verifier stays here; only its hash goes out."""
+    now = time.time()
+    for s, (at, _) in list(_connects.items()):
+        if now - at > 600:  # OpenRouter's codes last ten minutes
+            del _connects[s]
+    state, verifier = secrets.token_urlsafe(16), secrets.token_urlsafe(48)
+    _connects[state] = (now, verifier)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    query = urllib.parse.urlencode({"callback_url": callback, "code_challenge": challenge,
+                                    "code_challenge_method": "S256", "key_label": "Podroom", "state": state})
+    return f"https://openrouter.ai/auth?{query}"
+
+
+def openrouter_finish(code, state):
+    """Trades the code from the callback for a key and saves it. Returns the ID of the model now selected."""
+    at, verifier = _connects.pop(state, (0, None))
+    if not verifier or time.time() - at > 600:
+        raise ValueError("This sign-in link has expired. Go back to Podroom and press Connect again.")
+    body = json.dumps({"code": code, "code_verifier": verifier, "code_challenge_method": "S256"}).encode()
+    req = urllib.request.Request("https://openrouter.ai/api/v1/auth/keys", data=body,
+                                 headers={"Content-Type": "application/json", "User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            key = str(json.load(res).get("key") or "").strip()
+    except (OSError, ValueError) as e:
+        print(f"OpenRouter key exchange failed: {e}", file=sys.stderr, flush=True)
+        raise RuntimeError("OpenRouter did not hand over a key. Go back to Podroom and press Connect again.")
+    if not key:
+        raise RuntimeError("OpenRouter did not hand over a key. Go back to Podroom and press Connect again.")
+    save_key("openrouter", key)
+    # Start on the fastest free model (a new account has no credits for a paid one); a free pick of your own stays.
+    state = load_state()
+    s = state["settings"]
+    s["provider"] = "openrouter"
+    if not s.get("llmModel", "").endswith(":free"):
+        s["llmModel"] = FREE_MODEL
+    if s["llmModel"].endswith(":free"):  # about 28 calls: a longer show would run out of free calls partway
+        s["minutes"] = min(s.get("minutes") or 5, 5)
+    save_state(state)
+    global connected_at
+    connected_at = time.time()
+    return s["llmModel"]
+
+
 _catalogs = {}  # provider id -> (fetched at, {model id: entry})
 
 
@@ -432,6 +497,7 @@ def _reasoning(pid, model):
 def status():
     return {
         "fake": FAKE,
+        "openrouterConnectedAt": connected_at,
         "providers": [
             {"id": pid, "label": p["label"], "keyHint": p["keyHint"], "keyFile": key_file(pid).replace(os.path.expanduser("~"), "~"),
              "keyConfigured": FAKE or bool(api_key(pid)), "models": [{"id": m, "label": l} for m, l in p["models"]],
@@ -729,6 +795,8 @@ def chat(req, messages, max_tokens, temperature, stop=None, timeout=90):
     else:
         extra = 2000
     body["max_tokens"] = max_tokens + extra
+    if pid == "openrouter" and model.endswith(":free") and model != FREE_BACKUP:
+        body["models"] = [model, FREE_BACKUP]  # a free model's provider is often busy: OpenRouter tries the backup
     if stop:
         body["stop"] = stop
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}", "User-Agent": USER_AGENT, **prov.get("headers", {})}
@@ -745,6 +813,12 @@ def chat(req, messages, max_tokens, temperature, stop=None, timeout=90):
         except Exception:
             pass
         print(f"{name} HTTP {e.code}: {detail or e.reason}", file=sys.stderr, flush=True)
+        if e.code == 404 and "data policy" in detail.lower():  # free models are served by providers that may keep prompts
+            raise RuntimeError(f"Your {name} privacy settings rule out every provider of this model. Allow them at "
+                               f"openrouter.ai/settings/privacy, or pick another model in Settings.")
+        if e.code == 429 and "per-day" in detail:  # OpenRouter's free models: waiting a minute will not help
+            raise RuntimeError(f"You have used today's free {name} calls. They come back at midnight UTC, or add "
+                               f"credits on openrouter.ai and pick a paid model in Settings.")
         if e.code == 429:
             try:
                 retry_after = float(e.headers.get("Retry-After") or 0) or None

@@ -1,4 +1,5 @@
-// Podroom's sidebar, the same on every page: the three places (Studio, Casts, Settings) and your episodes.
+// Podroom's sidebar, the same on every page: New podcast, the three places (Studio, Casts, Settings), your episodes,
+// and until OpenRouter is connected, a line at the bottom offering its free AI models.
 // A page puts a <header class="page-head"> first in its body and loads this script; the sidebar goes in front of it.
 // The Studio sets window.podroomBusy while an episode plays, so leaving asks first instead of cutting the show off.
 (() => {
@@ -10,6 +11,7 @@
     episode: svg('<path d="M4 12h2M8 8v8M12 5v14M16 9v6M20 11v2"/>'),
     plus: svg('<path d="M12 5v14M5 12h14"/>'),
     menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+    arrow: svg('<path d="M9 6l6 6-6 6"/>'),
   };
   const LOGO = `<span class="logo"><svg width="24" height="24" viewBox="6 6 52 52" aria-hidden="true" style="color:var(--accent-ink)">
     <path d="M12 54V30a20 20 0 0 1 40 0v24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" opacity=".28"/>
@@ -26,14 +28,18 @@
   nav.setAttribute("aria-label", "Podroom");
   nav.innerHTML = `
     <a class="brand" href="/">${LOGO}Podroom</a>
+    <div class="nav-new-wrap"><a class="nav-new" href="/?new=1">${ICONS.plus}New podcast</a></div>
     <nav class="nav-sec">
       <div class="nav-label">Main menu</div>
       ${item("/", "Studio", ICONS.studio)}${item("/casts", "Casts", ICONS.casts)}${item("/settings", "Settings", ICONS.settings)}
     </nav>
     <div class="nav-sec eps">
-      <div class="nav-label">Episodes <a class="nav-add" href="/?new=1" title="New episode" aria-label="New episode">${ICONS.plus}</a></div>
+      <div class="nav-label">Episodes</div>
       <div class="ep-list" id="epList"><div class="ep-empty">Loading…</div></div>
     </div>
+    <button type="button" class="nav-connect" id="navPromo" data-connect hidden>
+      <span class="t"><b>Connect OpenRouter</b><small>Use free AI models</small></span>${ICONS.arrow}
+    </button>
     <div class="nav-foot">Voices run on this computer</div>`;
   const scrim = document.createElement("div");
   scrim.className = "nav-scrim";
@@ -72,7 +78,39 @@
         ${ICONS.episode}<span class="t"><b>${esc(e.topic || e.show)}</b><small>${esc(e.show)} · ${esc(when(e.updatedAt))}</small></span>
       </a>`).join("");
   }
+
+  // Connect OpenRouter: your own browser opens openrouter.ai (a localhost link, so the desktop app hands it over),
+  // and the server saves the key when you approve. This watches for that for ten minutes, then sends the page a
+  // "podroom:connected" event with the new state, or with null when it gave up. Anything marked data-connect starts it.
+  let connectedAt = 0, watch = null;
+  function renderPromo(status) {
+    connectedAt = status.openrouterConnectedAt;
+    const or = status.providers.find((p) => p.id === "openrouter");
+    document.getElementById("navPromo").hidden = status.fake || !or || or.keyConfigured;
+  }
+  function connect() {
+    window.open(`http://localhost:${location.port || 80}/openrouter/connect`, "_blank");
+    const since = connectedAt, until = Date.now() + 600000, btn = nav.querySelector(".nav-connect small");
+    btn.textContent = "Finish in your browser…";
+    clearInterval(watch);
+    watch = setInterval(async () => {
+      const st = await fetch("/api/podcast/state").then((r) => r.json()).catch(() => null);
+      const done = !!st && st.status.openrouterConnectedAt !== since;
+      if (!done && Date.now() < until) return;
+      clearInterval(watch);
+      btn.textContent = "Use free AI models";
+      if (st) renderPromo(st.status);
+      window.dispatchEvent(new CustomEvent("podroom:connected", { detail: done ? st : null }));
+    }, 2000);
+  }
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("[data-connect]")) return;
+    e.preventDefault();
+    connect();
+  });
+  fetch("/api/podcast/state").then((r) => r.json()).then((st) => renderPromo(st.status)).catch(() => {});
+
   // The Studio calls these when an episode starts, is saved or is opened.
-  window.podroomShell = { refresh, setActive(id) { active = id || ""; refresh(); } };
+  window.podroomShell = { refresh, setActive(id) { active = id || ""; refresh(); }, connect };
   refresh();
 })();

@@ -402,14 +402,20 @@ window.addEventListener("pagehide", () => {
   clearTimeout(saveTimer); saveTimer = null;
   navigator.sendBeacon("/api/podcast/state", new Blob([JSON.stringify(state)], { type: "application/json" }));
 });
-window.addEventListener("focus", async () => {
-  if (!state || show.running || saveTimer !== null || !$("editor").hidden) return;
-  const st = await fetch("/api/podcast/state").then((r) => r.json()).catch(() => null);
-  if (!st || show.running || saveTimer !== null) return;
+// Coming back to the window, or connecting OpenRouter from the sidebar, picks up changes made elsewhere.
+async function reloadState(st) {
+  if (!state || show.running || saveTimer !== null || !$("editor").hidden) return false;
+  st ||= await fetch("/api/podcast/state").then((r) => r.json()).catch(() => null);
+  if (!st || show.running || saveTimer !== null) return false;
   state = st.state; status = st.status;
   state.characters = state.characters.map(normalize);
   state.myTemplates = (state.myTemplates || []).map(normalize);
   renderEpisode(); renderCast(); renderKey(); renderNow(); renderBoxHint();
+  return true;
+}
+window.addEventListener("focus", () => reloadState());
+window.addEventListener("podroom:connected", async (e) => {
+  if (e.detail && await reloadState(e.detail) && keyOk()) setStatus("Connected to OpenRouter. Press Start.");
 });
 const cast = () => state.characters.filter((c) => c.name.trim());
 // You: a real person at the table who runs the show. You join in from the studio box, typed or spoken,
@@ -577,7 +583,9 @@ const prov = () => status.providers.find((p) => p.id === state.settings.provider
 const keyOk = () => !!prov()?.keyConfigured;
 
 function renderKey() {
-  $("bannerText").innerHTML = `Add your ${esc(prov().label)} API key in <a href="/settings#ai">Settings</a> to start an episode.`;
+  $("bannerText").innerHTML = prov().id === "openrouter"
+    ? `<a href="/settings#ai" data-connect>Connect OpenRouter</a> to start an episode. It takes a minute, and its free AI models cost nothing.`
+    : `Add your ${esc(prov().label)} API key in <a href="/settings#ai">Settings</a> to start an episode.`;
   $("keyBanner").hidden = keyOk();
   setControls();
 }
@@ -840,7 +848,7 @@ function openInvite() {
   ov.onclick = (e) => { if (e.target === ov && !busy) closeEditor(); };
   q(".go").onclick = async () => {
     if (busy) return;
-    if (!keyOk()) return note(`Add your ${prov().label} API key in Settings first.`, true);
+    if (!keyOk()) return note(prov().id === "openrouter" ? "Connect OpenRouter in Settings first." : `Add your ${prov().label} API key in Settings first.`, true);
     if (!state.topic.trim()) return note("Give the episode a topic first, so the AI knows who to look for.", true);
     busy = true; q(".go").disabled = true; q(".go").innerHTML = '<span class="spinner light"></span>Casting…'; note("");
     try {

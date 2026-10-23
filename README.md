@@ -13,8 +13,8 @@ machine, with [Phonon TTS](https://huggingface.co/gradium/phonon-40m-en).
 - **Casts**: everyone who has been on an episode, your own saved characters and the built-in templates in one place,
   plus named lineups you can load back in one click.
 - **Settings**: your AI provider and key, how the conversation flows, the voice model and speech to text.
-- **AI providers**: [OpenRouter](https://openrouter.ai) (any of its models with one key), DeepSeek, or OpenCode Go
-  (OpenAI-compatible chat completions).
+- **AI providers**: [OpenRouter](https://openrouter.ai) (any of its models with one key, connected with a single
+  sign-in, free models included), DeepSeek, or OpenCode Go (OpenAI-compatible chat completions).
 
 ## Desktop app
 
@@ -83,8 +83,12 @@ the show waits for you and the mic opens by itself as soon as their line ends. C
 ./podroom.sh
 ```
 
-This starts the server on http://127.0.0.1:7860 and opens it as an app window. Pick a provider and add its API key in
-the app under Settings (or set `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY` or `OPENCODE_API_KEY`); keys are stored in `~/.config/podroom/` and never sent back to the browser.
+This starts the server on http://127.0.0.1:7860 and opens it as an app window. In Settings, press **Connect
+OpenRouter**: you sign in or sign up on openrouter.ai, approve Podroom, and the key is saved for you. It picks the
+fastest free model (Nemotron 3.5 Lightning, with Nemotron 3 Ultra as a backup when it is busy), which OpenRouter
+limits to 50 calls a day (about one per spoken line, so roughly one 5-minute episode) until the account has bought 10
+credits, then 1000. You can also paste a key for any provider (or set `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY` or
+`OPENCODE_API_KEY`); keys are stored in `~/.config/podroom/` and never sent back to the browser.
 `podroom.desktop` is a desktop launcher. Install it with the paths filled in for where you cloned this:
 
 ```bash
