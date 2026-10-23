@@ -43,10 +43,12 @@
       </label>
       <div class="opt" id="connectRow" hidden>
         <div class="row" style="align-items:center;flex-direction:row">
+          <span class="keyok" id="connected" style="flex:none" hidden>✓ Connected to OpenRouter</span>
           <button class="btn primary" id="connect" style="flex:none">Connect OpenRouter</button>
+          <button class="btn ghost danger" id="disconnect" style="flex:none" hidden>Disconnect</button>
           <span class="help" id="connectState"></span>
         </div>
-        <span class="help">Sign in or sign up on openrouter.ai and Podroom gets a key by itself. It starts you on the fastest free model: 50 calls a day on a new account, enough for about one 5-minute episode.</span>
+        <span class="help" id="connectHelp"></span>
       </div>
       <label class="f"><span><span id="keyLabel">API key</span> <span class="help" id="keyState"></span></span>
         <div class="row" style="align-items:center;flex-direction:row">
@@ -217,12 +219,15 @@ const keyOk = () => !!prov()?.keyConfigured;
 function renderKey() {
   const p = prov(), ok = keyOk();
   // OpenRouter can hand over a key itself after you sign in; pasting one stays possible below.
-  $("connectRow").hidden = p.id !== "openrouter" || status.fake;
-  $("connect").textContent = ok ? "Reconnect OpenRouter" : "Connect OpenRouter";
-  $("connect").classList.toggle("primary", !ok);
+  const or = p.id === "openrouter";
+  $("connectRow").hidden = !or || status.fake;
+  $("connect").hidden = ok; $("connected").hidden = $("disconnect").hidden = !ok;
+  $("connectHelp").textContent = ok
+    ? "Podroom uses a key on your OpenRouter account. Disconnect makes this computer forget it; to switch accounts, disconnect and connect again."
+    : "Sign in or sign up on openrouter.ai and Podroom gets a key by itself. It starts you on the fastest free model: 50 calls a day on a new account, enough for about one 5-minute episode.";
   $("keyLabel").textContent = p.id === "openrouter" ? "Or paste an OpenRouter API key" : `${p.label} API key`;
   $("keyState").innerHTML = status.fake ? '<span class="keyok">Test mode: canned lines, no API calls</span>' : ok ? '<span class="keyok">✓ Key saved</span>' : "Not set";
-  $("removeKey").hidden = !ok || status.fake;
+  $("removeKey").hidden = !ok || status.fake || or; // OpenRouter's is Disconnect, above
   $("apiKey").placeholder = ok ? "Paste a new key to replace it" : p.keyHint;
   $("keyHelp").textContent = `Stored only on this computer, in ${p.keyFile}. It is never shown again.`;
 }
@@ -248,6 +253,20 @@ $("connect").onclick = () => {
   flush(); // the provider choice first, before the server sets the free model
   podroomShell.connect();
   $("connectState").textContent = "Finish signing in on openrouter.ai…";
+};
+// Podroom cannot delete the key from your OpenRouter account (that needs a management key), so it forgets it
+// here and links to the key's page on openrouter.ai.
+$("disconnect").onclick = async () => {
+  if (!confirm("Disconnect OpenRouter? Podroom forgets its key on this computer, and you need to connect again to make episodes.")) return;
+  const res = await post("/api/podcast/openrouter/disconnect", {}).then((r) => r.json()).catch(() => null);
+  if (!res?.status) return setStatus("Could not disconnect. Is the server running?", true);
+  status = res.status;
+  renderKey(); podroomShell.update(status);
+  // Said right under the button, where you are looking, in place of the usual help.
+  $("connectHelp").innerHTML = keyOk()
+    ? "The saved key is gone, but OPENROUTER_API_KEY is still set where Podroom was started, so it still has a key."
+    : "Disconnected. This computer no longer has your OpenRouter key."
+      + (res.keyUrl ? ` To delete the key itself, <a href="${esc(res.keyUrl)}" target="_blank" rel="noopener">open it on openrouter.ai</a>.` : "");
 };
 window.addEventListener("podroom:connected", (e) => {
   $("connectState").textContent = "";

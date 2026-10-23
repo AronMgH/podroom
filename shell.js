@@ -111,6 +111,7 @@
   fetch("/api/podcast/state").then((r) => r.json()).then((st) => renderPromo(st.status)).catch(() => {});
 
   // The Studio calls these when an episode starts, is saved or is opened.
-  window.podroomShell = { refresh, setActive(id) { active = id || ""; refresh(); }, connect };
+  // Settings calls update() after disconnecting, so the Connect row comes back.
+  window.podroomShell = { refresh, setActive(id) { active = id || ""; refresh(); }, connect, update: renderPromo };
   refresh();
 })();

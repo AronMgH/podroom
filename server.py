@@ -357,6 +357,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 podcast.delete_key(provider)
             self.send_json(200, podcast.status())  # never send the key back
+        elif self.path == "/api/podcast/openrouter/disconnect":
+            self.send_json(200, {"keyUrl": podcast.openrouter_disconnect(), "status": podcast.status()})
         elif self.path == "/api/podcast/episode":
             try:
                 self.send_json(200, {"saved": podcast.save_episode(self.read_json())})

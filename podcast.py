@@ -441,6 +441,14 @@ def openrouter_finish(code, state):
     return s["llmModel"]
 
 
+def openrouter_disconnect():
+    """Forgets the OpenRouter key on this computer. Podroom cannot delete it from your account (that takes a
+    management key), so this returns the key's page on openrouter.ai, where you can. Empty when there was no key."""
+    key = api_key("openrouter")
+    delete_key("openrouter")
+    return f"https://openrouter.ai/keys/{hashlib.sha256(key.encode()).hexdigest()}" if key else ""
+
+
 _catalogs = {}  # provider id -> (fetched at, {model id: entry})
 
 
